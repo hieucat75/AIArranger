@@ -98,6 +98,7 @@ std::string Sff1ReportGenerator::generateReport(const ParseResult& result) noexc
     ss << "  Known chunks:  " << score.known_chunks << "\n";
     ss << "  Unknown chunks: " << score.unknown_chunks << "\n";
     ss << "  Sections:      " << score.parsed_sections << "\n";
+    ss << "  CASM sections: " << result.sections_parsed.size() << "\n";
     ss << "  Events:        " << score.total_events << "\n";
     ss << "  MegaVoice candidates: " << score.megavoice_candidates << "\n";
     ss << "  CASM sections: " << score.casm_sections << "\n";
