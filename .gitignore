@@ -1,0 +1,11 @@
+build/
+*.o
+*.obj
+test-clock
+test-scheduler
+test-panic
+test-timing-benchmark
+timing-benchmark
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
