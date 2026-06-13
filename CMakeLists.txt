@@ -30,5 +30,8 @@ add_executable(run-tests
     tests/engine/test_chord_input.cpp
     tests/engine/test_section_sequencer.cpp
     tests/engine/test_style_player.cpp
+    tests/engine/test_serializer.cpp
+    tests/engine/test_deserializer.cpp
+    tests/engine/test_validator.cpp
 )
 target_link_libraries(run-tests arranger-engine Threads::Threads)
