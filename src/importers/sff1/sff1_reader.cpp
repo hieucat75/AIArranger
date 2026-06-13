@@ -424,36 +424,46 @@ bool Sff1Reader::parseCasm(const uint8_t* data, size_t size) noexcept {
 }
 
 void Sff1Reader::parseCtb2Block(const uint8_t* data, size_t size) noexcept {
-    const size_t ENTRY_SIZE = 47;
-    size_t num = size / ENTRY_SIZE;
+    // A Ctb2 sub-chunk holds one source-channel configuration. Layout
+    // (offsets within the entry), validated against 4 real Genos files:
+    //   [0]      Source Channel
+    //   [1..8]   Name (8 bytes, space-padded)
+    //   [9]      Destination Channel
+    //   [10]     Editable flag
+    //   [11..17] Note/chord mute bitfields
+    //   [18..19] Source chord (root, type)
+    //   [20]     Note Limit Low
+    //   [21]     Note Limit High
+    //   [22]     NTR (Note Transposition Rule)
+    //   [23]     NTT (bit 7 = bass-note flag, bits 0-6 = table type)
+    //   [24..]   Repeats for additional section variants (SFF2)
+    constexpr size_t kMinEntry = 24;   // need through NTT at [23]
+    if (size < kMinEntry) return;      // buffer too short — skip, no crash
 
-    for (size_t i = 0; i < num; ++i) {
-        const uint8_t* entry = data + (i * ENTRY_SIZE);
-        CasmTrackConfig cfg;
+    CasmTrackConfig cfg{};
+    cfg.source_channel = data[0];
 
-        // Track name (20 bytes, space-padded with potential trailing garbage)
-        cfg.name = std::string(reinterpret_cast<const char*>(entry), 20);
-        // Strip trailing non-printable and whitespace
-        while (!cfg.name.empty() && (cfg.name.back() <= 32 || cfg.name.back() == 127))
-            cfg.name.pop_back();
-        // Strip leading non-printable
-        size_t start = 0;
-        while (start < cfg.name.size() && (cfg.name[start] <= 32 || cfg.name[start] == 127))
-            start++;
-        if (start > 0) cfg.name = cfg.name.substr(start);
+    // Name: bytes 1..8, strip trailing whitespace / non-printable
+    cfg.name = std::string(reinterpret_cast<const char*>(data + 1), 8);
+    while (!cfg.name.empty() &&
+           (static_cast<uint8_t>(cfg.name.back()) <= 32 ||
+            static_cast<uint8_t>(cfg.name.back()) == 127))
+        cfg.name.pop_back();
 
-        // Config starts at byte 20
-        const uint8_t* c = entry + 20;
-        cfg.low_key = c[0];
-        cfg.high_key = c[1];
-        cfg.ntr = c[2];
-        cfg.ntt = c[5];
+    cfg.dest_channel = data[9];
+    cfg.low_key  = data[20];
+    cfg.high_key = data[21];
+    cfg.ntr      = data[22];
 
-        // MegaVoice heuristic: non-standard velocity ranges or tight note ranges
-        cfg.is_megavoice = (c[2] >= 5 && c[5] >= 7);
+    const uint8_t ntt_raw = data[23];
+    cfg.ntt_bass = (ntt_raw & 0x80) != 0;
+    cfg.ntt      = ntt_raw & 0x7F;
 
-        result_.casm_configs.push_back(std::move(cfg));
-    }
+    // MegaVoice is detected from velocity data (see report generator),
+    // not from CASM track config — do not guess here.
+    cfg.is_megavoice = false;
+
+    result_.casm_configs.push_back(std::move(cfg));
 }
 
 } // namespace ai_arranger::importers::sff1

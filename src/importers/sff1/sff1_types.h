@@ -80,12 +80,17 @@ struct CasmSectionInfo {
 };
 
 // ── CASM Track Configuration ──────────────────────────────────────
+// One per Ctb2 source-channel block. Field offsets validated against
+// 4 real Genos .S718 files — see docs/importers/casm-structure-notes.md.
 struct CasmTrackConfig {
-    std::string name;           // Track name (20 bytes)
-    uint8_t     high_key;       // Note range high
-    uint8_t     low_key;        // Note range low
+    std::string name;           // Track name (8-byte field, trimmed)
+    uint8_t     source_channel; // MIDI source channel (0-15)
+    uint8_t     dest_channel;   // MIDI destination channel (0-15)
+    uint8_t     high_key;       // Note limit high
+    uint8_t     low_key;        // Note limit low
     uint8_t     ntr;            // Note Transposition Rule value
-    uint8_t     ntt;            // Note Transposition Table value
+    uint8_t     ntt;            // Note Transposition Table type (bits 0-6)
+    bool        ntt_bass;       // NTT bit 7: bass-note conversion enabled
     bool        is_megavoice;   // Megavoice candidate flag
 };
 
