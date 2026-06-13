@@ -51,3 +51,7 @@ endforeach()
 # ── SFF1 parser CLI tool ──────────────────────────────────────────────
 add_executable(sff1-parser tools/sff1_parser_cli.cpp)
 target_link_libraries(sff1-parser importer-sff1 arranger-engine)
+
+# ── Korg playback CLI (Gate 9 manual Musical Review driver) ───────────
+add_executable(korg-playback tools/korg_playback_cli.cpp)
+target_link_libraries(korg-playback arranger-engine Threads::Threads)
