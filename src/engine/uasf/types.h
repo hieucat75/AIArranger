@@ -87,11 +87,13 @@ struct ArticulationMetadata {
     ArticulationProfile profile;
     FidelityRequirement fidelity;
     PlaybackRecommendation recommended;
-    std::string vendor;          // "yamaha", "korg", etc. (informational only)
-    std::string vendor_articulation;  // Original articulation name if known
+    uint8_t ntr;                 // Note Transposition Rule (0=Root,1=Fifth,2=Chord,3=Bass,6=Fixed)
+    uint8_t ntt;                 // Note Transposition Table (from CASM)
+    std::string vendor;
+    std::string vendor_articulation;
     bool has_keyswitch;
-    uint8_t keyswitch_note;      // 0 if no keyswitch
-    std::vector<uint8_t> velocity_map; // Custom velocity mapping
+    uint8_t keyswitch_note;
+    std::vector<uint8_t> velocity_map;
 };
 
 // ── Track Definition ─────────────────────────────────────────────────
