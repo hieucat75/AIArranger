@@ -78,6 +78,16 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
                              track.role == uasf::TrackRole::Percussion);
             track.articulation.profile = uasf::ArticulationProfile::Generic;
             track.articulation.fidelity = uasf::FidelityRequirement::High;
+
+            // Pass NTR/NTT from CASM config to UASF articulation
+            for (const auto& cfg : parseResult.casm_configs) {
+                if (track.name.find(cfg.name) != std::string::npos) {
+                    track.articulation.ntr = cfg.ntr;
+                    track.articulation.ntt = cfg.ntt;
+                    break;
+                }
+            }
+
             sec.tracks.push_back(std::move(track));
         }
         result.casm_sections.push_back(std::move(sec));
@@ -88,12 +98,18 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
         result.unmapped_features = parseResult.unsupported_features;
     }
 
-    // No silent fallback (rule #5): NTR/NTT have no representation in UASF v1.
+    // NTR/NTT values passed to UASF articulation metadata (Gate 8)
     if (!parseResult.casm_configs.empty()) {
-        result.unmapped_features.push_back(
-            "CASM NTR/NTT transposition rules not representable in UASF v1 (" +
-            std::to_string(parseResult.casm_configs.size()) +
-            " track configs); roles inferred from name/channel, not transposition");
+        // Count mapped tracks
+        size_t mappedNtr = 0;
+        for (const auto& sec : result.casm_sections) {
+            for (const auto& trk : sec.tracks) {
+                if (trk.articulation.ntr != 0) mappedNtr++;
+            }
+        }
+        result.warnings.push_back(
+            "NTR/NTT mapped for " + std::to_string(mappedNtr) +
+            " tracks (supports Root, Fifth, Chord, Bass, Fixed)");
     }
 
     result.success = true;

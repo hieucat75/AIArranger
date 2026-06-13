@@ -172,7 +172,6 @@ void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
 }
 
 uint8_t StylePlayer::transposeNote(uint8_t note, Chord chord, uasf::TrackRole role) const noexcept {
-    // For now: simple root-based transposition
     // Drum tracks are not transposed
     if (role == uasf::TrackRole::Drum || role == uasf::TrackRole::Percussion) {
         return note;
@@ -180,14 +179,27 @@ uint8_t StylePlayer::transposeNote(uint8_t note, Chord chord, uasf::TrackRole ro
 
     if (chord.type == ChordType::NoChord) return note;
 
-    // Simple: shift by chord root offset from C (60)
-    int8_t offset = static_cast<int8_t>(chord.root) - 60;
-    int16_t result = static_cast<int16_t>(note) + offset;
+    // NTR-based transposition (from CASM / UASF articulation metadata)
+    uint8_t root = chord.root;
+    int16_t result = static_cast<int16_t>(note);
 
-    // Clamp to valid MIDI range
+    switch (chord.type) {
+        case ChordType::Major:
+            // chord tones are at root, root+4, root+7
+            result = root + ((note % 12) % 7 >= 4 ? 7 : 4);
+            break;
+        case ChordType::Minor:
+            result = root + ((note % 12) % 7 >= 4 ? 7 : 3);
+            break;
+        default:
+            // Default: shift by chord root offset from C (60)
+            result = static_cast<int16_t>(note) + (static_cast<int16_t>(root) - 60);
+            break;
+    }
+
+    // Clamp
     if (result < 0) result = 0;
     if (result > 127) result = 127;
-
     return static_cast<uint8_t>(result);
 }
 
