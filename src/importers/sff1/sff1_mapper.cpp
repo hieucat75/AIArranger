@@ -8,7 +8,8 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
     SffToUasfResult result;
     result.success = false;
 
-    if (!parseResult.success || parseResult.sections.empty()) {
+    if (!parseResult.success ||
+        (parseResult.sections.empty() && parseResult.casm_sections.empty())) {
         result.error = "No sections to map";
         return result;
     }
