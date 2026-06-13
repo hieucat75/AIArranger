@@ -3,22 +3,22 @@
 
 #include <cstdint>
 #include <atomic>
-#include <chrono>
+#include <mach/mach_time.h>
 
 namespace ai_arranger::realtime {
 
 /**
  * Sample-position-based realtime clock.
  *
- * The clock derives position from an accumulated sample count,
- * NOT from OS timers. This matches CoreAudio render callback
- * semantics and ensures timing accuracy is bounded by the
- * audio buffer size, not the OS scheduler.
+ * Uses mach_absolute_time() for high-precision timing reference,
+ * driven by CoreAudio render callback sample positions.
  *
- * Architecture rule (ADR-013):
+ * Architecture rules (ADR-013):
  * - No malloc in realtime path
  * - No mutex in realtime path
  * - No file IO in realtime path
+ * - No ObjC/Swift/ARC
+ * - mach_absolute_time(), not std::chrono, in callback path
  */
 
 class RealtimeClock {
@@ -28,47 +28,68 @@ public:
 
     RealtimeClock();
 
-    // ── Configuration (called outside realtime thread) ──────────────
+    // ── Configuration (non-realtime) ────────────────────────────────
     void setSampleRate(uint32_t sampleRate) noexcept;
     void setTempo(uint32_t bpm) noexcept;
     void setResolution(uint32_t ticksPerQuarter) noexcept;
     void setTimeSignature(uint32_t beatsPerBar, uint32_t beatNote) noexcept;
 
-    // ── Real-time safe (call from audio callback) ───────────────────
+    // ── Realtime-safe ───────────────────────────────────────────────
     void reset() noexcept;
     void advance(uint32_t numSamples) noexcept;
     void stop() noexcept;
     void start() noexcept;
 
-    // ── Read-only queries (real-time safe) ───────────────────────────
-    [[nodiscard]] int64_t getPosition() const noexcept;       // Current tick
-    [[nodiscard]] int64_t getSamplePosition() const noexcept; // Current sample
-    [[nodiscard]] uint32_t getTempo() const noexcept;
-    [[nodiscard]] double getTicksPerSample() const noexcept;
-    [[nodiscard]] bool isRunning() const noexcept;
+    // ── mach_absolute_time reference (call from CoreAudio callback) ─
+    void setMachTime(uint64_t machTime) noexcept;
+    uint64_t getMachTime() const noexcept;
+    uint64_t getMachTimeNs() const noexcept;
 
-    // ── Bar/beat calculation (not real-time safe if accuracy needed) ─
-    [[nodiscard]] int32_t getCurrentBar(int64_t position) const noexcept;
-    [[nodiscard]] int32_t getCurrentBeat(int64_t position) const noexcept;
+    // ── Read-only queries (realtime-safe) ───────────────────────────
+    int64_t  getPosition() const noexcept;
+    int64_t  getSamplePosition() const noexcept;
+    uint32_t getTempo() const noexcept;
+    double   getTicksPerSample() const noexcept;
+    bool     isRunning() const noexcept;
+    uint32_t getSampleRate() const noexcept;
+    uint32_t getBeatsPerBar() const noexcept;
+
+    // ── Bar/beat helpers (realtime-safe) ────────────────────────────
+    int32_t getCurrentBar() const noexcept;
+    int32_t getCurrentBeat() const noexcept;
+    int32_t getCurrentBarFromTick(int64_t tick) const noexcept;
+    int32_t getCurrentBeatFromTick(int64_t tick) const noexcept;
+
+    // ── Section boundary helpers ────────────────────────────────────
+    bool isFirstBeatOfBar() const noexcept;
+    int64_t getNextBarTick() const noexcept;
+    int64_t ticksPerBar() const noexcept;
+    int64_t ticksPerBeat() const noexcept;
 
 private:
-    // All state is lock-free: atomic for cross-thread visibility
+    // Lock-free state (atomic for cross-thread visibility)
     std::atomic<uint32_t> sample_rate_{kDefaultSampleRate};
     std::atomic<uint32_t> tempo_bpm_{120};
     std::atomic<uint32_t> resolution_{kDefaultResolution};
     std::atomic<uint32_t> beats_per_bar_{4};
     std::atomic<uint32_t> beat_note_{4};
-    std::atomic<int64_t> sample_position_{0};
-    std::atomic<bool> running_{false};
+    std::atomic<int64_t>  sample_position_{0};
+    std::atomic<bool>     running_{false};
 
-    // Derived (recalc on tempo/resolution/sampleRate change)
-    std::atomic<double> ticks_per_sample_{0.0};
-    std::atomic<int64_t> samples_per_beat_{0};
-    std::atomic<int64_t> samples_per_bar_{0};
+    // mach_absolute_time reference
+    std::atomic<uint64_t> last_mach_time_{0};
+
+    // Derived (recalc on config change)
+    mutable std::atomic<double>  ticks_per_sample_{0.0};   // mutable for cached get
+    mutable std::atomic<int64_t> ticks_per_bar_cache_{0};
+    mutable std::atomic<int64_t> ticks_per_beat_cache_{0};
+    mutable std::atomic<int64_t> samples_per_beat_{0};
+    std::atomic<uint64_t>        config_generation_{0};
+    mutable std::atomic<uint64_t> cache_generation_{0};
 
     void recalcDerived() noexcept;
+    void ensureCache() const noexcept;
 };
 
 } // namespace ai_arranger::realtime
-
 #endif // AI_ARRANGER_REALTIME_CLOCK_H
