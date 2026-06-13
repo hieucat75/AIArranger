@@ -91,6 +91,7 @@ struct CasmTrackConfig {
 
 // ── MIDI Event (raw SFF1) ─────────────────────────────────────────
 struct SffMidiEvent {
+    uint32_t tick;
     uint8_t  status;
     uint8_t  data1;
     uint8_t  data2;

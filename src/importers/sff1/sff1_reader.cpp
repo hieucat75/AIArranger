@@ -377,4 +377,74 @@ bool Sff1Reader::parseMTrk(const SffChunk& chunk) noexcept {
     return true;
 }
 
+// ── CASM Parsing ───────────────────────────────────────────────────
+
+bool Sff1Reader::parseCasm(const uint8_t* data, size_t size) noexcept {
+    if (size < 8) return false;
+
+    size_t pos = 0;
+
+    // Optional CSEG marker (present at top level, absent in inner CSEG)
+    if (data[0] == 'C' && data[1] == 'S' && data[2] == 'E' && data[3] == 'G') {
+        pos = 8; // Skip CSEG + 4-byte big-endian size
+    }
+
+    // Parse sub-chunks: id(4) + size_be(4) + data(size)
+    while (pos + 8 <= size) {
+        std::string sub_id(reinterpret_cast<const char*>(data + pos), 4);
+        // CASM sizes are BIG-ENDIAN
+        uint32_t sub_size = (static_cast<uint32_t>(data[pos + 4]) << 24) |
+                            (static_cast<uint32_t>(data[pos + 5]) << 16) |
+                            (static_cast<uint32_t>(data[pos + 6]) << 8) |
+                             static_cast<uint32_t>(data[pos + 7]);
+        pos += 8;
+
+        if (pos + sub_size > size) break;
+
+        if (sub_id == "Ctb2") {
+            parseCtb2Block(data + pos, sub_size);
+        } else if (sub_id == "CSEG") {
+            // Inner CSEG — data starts directly with sub-chunks (no CSEG header)
+            parseCasm(data + pos, sub_size);
+        }
+
+        pos += sub_size;
+    }
+
+    return true;
+}
+
+void Sff1Reader::parseCtb2Block(const uint8_t* data, size_t size) noexcept {
+    const size_t ENTRY_SIZE = 47;
+    size_t num = size / ENTRY_SIZE;
+
+    for (size_t i = 0; i < num; ++i) {
+        const uint8_t* entry = data + (i * ENTRY_SIZE);
+        CasmTrackConfig cfg;
+
+        // Track name (20 bytes, space-padded with potential trailing garbage)
+        cfg.name = std::string(reinterpret_cast<const char*>(entry), 20);
+        // Strip trailing non-printable and whitespace
+        while (!cfg.name.empty() && (cfg.name.back() <= 32 || cfg.name.back() == 127))
+            cfg.name.pop_back();
+        // Strip leading non-printable
+        size_t start = 0;
+        while (start < cfg.name.size() && (cfg.name[start] <= 32 || cfg.name[start] == 127))
+            start++;
+        if (start > 0) cfg.name = cfg.name.substr(start);
+
+        // Config starts at byte 20
+        const uint8_t* c = entry + 20;
+        cfg.low_key = c[0];
+        cfg.high_key = c[1];
+        cfg.ntr = c[2];
+        cfg.ntt = c[5];
+
+        // MegaVoice heuristic: non-standard velocity ranges or tight note ranges
+        cfg.is_megavoice = (c[2] >= 5 && c[5] >= 7);
+
+        result_.casm_configs.push_back(std::move(cfg));
+    }
+}
+
 } // namespace ai_arranger::importers::sff1
