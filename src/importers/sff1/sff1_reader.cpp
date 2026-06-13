@@ -61,6 +61,12 @@ ParseResult Sff1Reader::parseBuffer(const std::vector<uint8_t>& buffer,
                 auto section = parseSection(chunk);
                 result_.sections.push_back(std::move(section));
                 result_.parsed_sections++;
+            } else if (chunk.chunk_id == "MThd") {
+                // SMF header — extract resolution
+                parseMThd(chunk);
+            } else if (chunk.chunk_id == "MTrk") {
+                // SMF track — extract MIDI events
+                parseMTrk(chunk);
             }
         } else {
             // End of readable chunks
@@ -326,6 +332,46 @@ void Sff1Reader::skip(size_t bytes) noexcept {
 
 bool Sff1Reader::ensure(size_t bytes) noexcept {
     return pos_ + bytes <= size_;
+}
+
+// ── SMF/SFF2 Parsing ─────────────────────────────────────────────
+
+bool Sff1Reader::parseMThd(const SffChunk& chunk) noexcept {
+    if (chunk.data.size() < 6) return false;
+
+    uint16_t division = static_cast<uint16_t>(chunk.data[4]) |
+                        (static_cast<uint16_t>(chunk.data[5]) << 8);
+
+    SffSection section;
+    section.type = SffSectionType::Main1;
+    section.name = "SMF (SFF2/Genos)";
+    section.bars = 4;
+    section.resolution = (division & 0x8000) ? (division & 0x7FFF) : division;
+    section.casm_parsed = false;
+    result_.sections.push_back(std::move(section));
+    result_.parsed_sections++;
+
+    return true;
+}
+
+bool Sff1Reader::parseMTrk(const SffChunk& chunk) noexcept {
+    if (chunk.data.empty()) return false;
+
+    uint32_t offset = 0;
+    auto events = parseMidiEvents(chunk.data.data(), chunk.data.size(), offset);
+
+    if (!events.empty() && !result_.sections.empty()) {
+        auto& section = result_.sections.back();
+        SffTrack track;
+        track.role = SffTrackRole::Phrase1;
+        track.midi_channel = 0;
+        track.name = "MTrk";
+        track.events = std::move(events);
+        section.tracks.push_back(std::move(track));
+        result_.parsed_events += track.events.size();
+    }
+
+    return true;
 }
 
 } // namespace ai_arranger::importers::sff1
