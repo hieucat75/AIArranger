@@ -15,7 +15,7 @@
 | G4: SFF1 Research + Governance | ✅ Merged | fc8f659 | 125/125 |
 | G5: SFF1 Parser Spike | ✅ Merged | ebaa59c | 140/140 |
 | G6: SFF2/SMF Corpus Validation | ✅ Merged | 72131a5 | 140/140 |
-| G7: CASM Semantic Analysis | 🔶 BRANCH | a674abb | 140/140 |
+| G7: CASM Semantic Analysis | ✅ BRANCH (ready) | b744774 | 173/173 |
 
 ### Current Branch
 `gate-7-casm-semantic-analysis` — NOT merged to main yet
@@ -53,31 +53,39 @@ CASM chunk structure:
 
 ---
 
-## 4. IMPLEMENTATION TASKS (Not Done)
+## 4. IMPLEMENTATION TASKS — ALL DONE (Gate 7 complete)
 
-### Task A — CasmTrackConfig types (DONE)
-- struct added to sff1_types.h
-- vector added to ParseResult
+> See `docs/gate-plans/GATE_7_HANDOFF.md` for the full close-out report.
 
-### Task B — CASM parsing methods (PARTIALLY DONE)
-- Declared in sff1_reader.h: parseCasm(), parseCtb2Block()
-- Call added in sff1_reader.cpp parseBuffer()
-- **IMPLEMENTATIONS MISSING** — parseCasm() and parseCtb2Block() need bodies
+### Task A — CasmTrackConfig types ✅ DONE
+- struct + ParseResult vector (extended in Task B with channels + ntt_bass)
 
-### Task C — Section boundary detection (NOT DONE)
-- All events in single section currently
-- Need CASM Sdec section definitions
-- Create separate UASF sections
+### Task B — CASM parsing methods ✅ DONE
+- parseCasm()/parseCtb2Block() had bodies but WRONG field offsets
+  (20-byte name, NTT at byte 25 = garbage). Corrected to the validated
+  47-byte Ctb2 layout: src-channel[0], name[1..8], NTR[22], NTT[23].
 
-### Task D — NTR/NTT > UASF mapping (NOT DONE)
-- sff1_mapper.cpp needs CASM data
-- Determine TrackRole from NTR/NTT
+### Task C — Section detection (Sdec) ✅ DONE
+- parseCasm groups Ctb2 configs under each Sdec section
+- ParseResult::casm_sections (name + tracks); CASM section *structure*
+  exposed. Event-to-section splitting deferred to Gate 8.
 
-### Task E — Tests (NOT DONE)
-- Add CASM-specific tests to test_sff1_reader.cpp
+### Task D — NTR/NTT → UASF mapping ✅ DONE
+- sff1_mapper: mapCasmTrackRole (name-primary + NTT bass flag),
+  mapCasmSectionType; SffToUasfResult::casm_sections built from CASM.
+- NTR/NTT logged in unmapped_features (no UASF v1 field).
 
-### Task F — Compatibility score update (NOT DONE)
-- Add harmonic/arranger metrics to sff1_report.cpp
+### Task E — Tests ✅ DONE
+- test_sff1_reader 15 → 48 assertions (synthetic CASM + real corpus +
+  mapper). CMake passes CORPUS_DIR.
+
+### Task F — Compatibility score ✅ DONE
+- harmonic_fidelity + casm_sections/casm_tracks/bass_tracks in report.
+
+### Build harness (G7-FIX) ✅
+- CMake `run-tests` target never built (10 main()s) and omitted the uasf
+  glob. Replaced with per-test executables + CTest; added importer-sff1
+  lib and sff1-parser tool. Baseline restored to 140, now 173 assertions.
 
 ---
 
