@@ -404,8 +404,17 @@ bool Sff1Reader::parseCasm(const uint8_t* data, size_t size) noexcept {
         if (sub_id == "Ctb2") {
             parseCtb2Block(data + pos, sub_size);
         } else if (sub_id == "CSEG") {
-            // Inner CSEG — data starts directly with sub-chunks (no CSEG header)
+            // Inner CSEG — another section
             parseCasm(data + pos, sub_size);
+        } else if (sub_id == "Sdec") {
+            // Section definition — extract section name
+            if (sub_size > 0 && sub_size <= 32) {
+                std::string sec_name(reinterpret_cast<const char*>(data + pos), sub_size);
+                // Strip padding
+                while (!sec_name.empty() && sec_name.back() <= 32)
+                    sec_name.pop_back();
+                result_.sections_parsed.push_back(sec_name);
+            }
         }
 
         pos += sub_size;

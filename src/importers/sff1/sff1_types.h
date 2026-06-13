@@ -137,6 +137,7 @@ struct ParseResult {
     uint32_t parsed_sections;
     uint32_t parsed_events;
     std::vector<CasmTrackConfig> casm_configs;
+    std::vector<std::string> sections_parsed;
 };
 
 // ── Supported Chunk IDs ───────────────────────────────────────────
