@@ -1,0 +1,18 @@
+{
+    "path": "corpus/yamaha/TEMPLATE.sty",
+    "checksum_sha256": "",
+    "source": "",
+    "source_type": "",
+    "format": "SFF1",
+    "sections": 0,
+    "tracks": 0,
+    "expected_parse": "full",
+    "expected_structural_fidelity": 0.0,
+    "expected_harmonic_fidelity": 0.0,
+    "expected_groove_fidelity": 0.0,
+    "expected_articulation_fidelity": 0.0,
+    "known_limitations": [],
+    "license_verified": false,
+    "license_note": "",
+    "added_date": ""
+}
