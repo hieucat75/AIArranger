@@ -31,6 +31,7 @@ ParseResult Sff1Reader::parseBuffer(const std::vector<uint8_t>& buffer,
     data_ = buffer.data();
     size_ = buffer.size();
     pos_ = 0;
+    casm_section_idx_ = -1;
     result_ = ParseResult{};
     result_.success = false;
     result_.file_path = filename;
@@ -67,6 +68,9 @@ ParseResult Sff1Reader::parseBuffer(const std::vector<uint8_t>& buffer,
             } else if (chunk.chunk_id == "MTrk") {
                 // SMF track — extract MIDI events
                 parseMTrk(chunk);
+            } else if (chunk.chunk_id == "CASM") {
+                // CASM — semantic configuration data
+                parseCasm(chunk.data.data(), chunk.data.size());
             }
         } else {
             // End of readable chunks
@@ -372,6 +376,110 @@ bool Sff1Reader::parseMTrk(const SffChunk& chunk) noexcept {
     }
 
     return true;
+}
+
+// ── CASM Parsing ───────────────────────────────────────────────────
+
+bool Sff1Reader::parseCasm(const uint8_t* data, size_t size) noexcept {
+    if (size < 8) return false;
+
+    size_t pos = 0;
+
+    // Optional CSEG marker (present at top level, absent in inner CSEG)
+    if (data[0] == 'C' && data[1] == 'S' && data[2] == 'E' && data[3] == 'G') {
+        pos = 8; // Skip CSEG + 4-byte big-endian size
+    }
+
+    // Parse sub-chunks: id(4) + size_be(4) + data(size)
+    while (pos + 8 <= size) {
+        std::string sub_id(reinterpret_cast<const char*>(data + pos), 4);
+        // CASM sizes are BIG-ENDIAN
+        uint32_t sub_size = (static_cast<uint32_t>(data[pos + 4]) << 24) |
+                            (static_cast<uint32_t>(data[pos + 5]) << 16) |
+                            (static_cast<uint32_t>(data[pos + 6]) << 8) |
+                             static_cast<uint32_t>(data[pos + 7]);
+        pos += 8;
+
+        if (pos + sub_size > size) break;
+
+        if (sub_id == "Ctb2") {
+            parseCtb2Block(data + pos, sub_size);
+        } else if (sub_id == "CSEG") {
+            // Inner CSEG — another section
+            parseCasm(data + pos, sub_size);
+        } else if (sub_id == "Sdec") {
+            // Section definition — extract section name and open a new
+            // CASM section. Subsequent Ctb2 blocks attach to it.
+            if (sub_size > 0 && sub_size <= 64) {
+                std::string sec_name(reinterpret_cast<const char*>(data + pos), sub_size);
+                // Strip padding
+                while (!sec_name.empty() &&
+                       static_cast<uint8_t>(sec_name.back()) <= 32)
+                    sec_name.pop_back();
+                if (!sec_name.empty()) {
+                    result_.sections_parsed.push_back(sec_name);
+                    CasmSection cs;
+                    cs.name = sec_name;
+                    result_.casm_sections.push_back(std::move(cs));
+                    casm_section_idx_ =
+                        static_cast<int>(result_.casm_sections.size()) - 1;
+                }
+            }
+        }
+
+        pos += sub_size;
+    }
+
+    return true;
+}
+
+void Sff1Reader::parseCtb2Block(const uint8_t* data, size_t size) noexcept {
+    // A Ctb2 sub-chunk holds one source-channel configuration. Layout
+    // (offsets within the entry), validated against 4 real Genos files:
+    //   [0]      Source Channel
+    //   [1..8]   Name (8 bytes, space-padded)
+    //   [9]      Destination Channel
+    //   [10]     Editable flag
+    //   [11..17] Note/chord mute bitfields
+    //   [18..19] Source chord (root, type)
+    //   [20]     Note Limit Low
+    //   [21]     Note Limit High
+    //   [22]     NTR (Note Transposition Rule)
+    //   [23]     NTT (bit 7 = bass-note flag, bits 0-6 = table type)
+    //   [24..]   Repeats for additional section variants (SFF2)
+    constexpr size_t kMinEntry = 24;   // need through NTT at [23]
+    if (size < kMinEntry) return;      // buffer too short — skip, no crash
+
+    CasmTrackConfig cfg{};
+    cfg.source_channel = data[0];
+
+    // Name: bytes 1..8, strip trailing whitespace / non-printable
+    cfg.name = std::string(reinterpret_cast<const char*>(data + 1), 8);
+    while (!cfg.name.empty() &&
+           (static_cast<uint8_t>(cfg.name.back()) <= 32 ||
+            static_cast<uint8_t>(cfg.name.back()) == 127))
+        cfg.name.pop_back();
+
+    cfg.dest_channel = data[9];
+    cfg.low_key  = data[20];
+    cfg.high_key = data[21];
+    cfg.ntr      = data[22];
+
+    const uint8_t ntt_raw = data[23];
+    cfg.ntt_bass = (ntt_raw & 0x80) != 0;
+    cfg.ntt      = ntt_raw & 0x7F;
+
+    // MegaVoice is detected from velocity data (see report generator),
+    // not from CASM track config — do not guess here.
+    cfg.is_megavoice = false;
+
+    // Attach to the current CASM section (opened by the preceding Sdec),
+    // then keep a flat copy for callers that don't need section grouping.
+    if (casm_section_idx_ >= 0 &&
+        casm_section_idx_ < static_cast<int>(result_.casm_sections.size())) {
+        result_.casm_sections[casm_section_idx_].tracks.push_back(cfg);
+    }
+    result_.casm_configs.push_back(std::move(cfg));
 }
 
 } // namespace ai_arranger::importers::sff1

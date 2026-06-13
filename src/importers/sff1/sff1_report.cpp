@@ -57,6 +57,23 @@ CompatibilityScore Sff1ReportGenerator::computeScore(const ParseResult& result) 
         }
     }
 
+    // ── Harmonic / arranger fidelity from CASM (Gate 7) ────────────────
+    score.casm_sections = static_cast<uint32_t>(result.casm_sections.size());
+    score.casm_tracks   = static_cast<uint32_t>(result.casm_configs.size());
+
+    uint32_t chordAware = 0;
+    for (const auto& cfg : result.casm_configs) {
+        if (cfg.ntt_bass) score.bass_tracks++;
+        // A track follows the chord when it has a non-bypass transposition
+        // table or the bass-note flag. Pure drum tracks (NTT bypass, no bass)
+        // do not, and are excluded from harmonic coverage.
+        if (cfg.ntt != 0 || cfg.ntt_bass) chordAware++;
+    }
+    if (score.casm_tracks > 0) {
+        score.harmonic_fidelity = static_cast<double>(chordAware) /
+                                  static_cast<double>(score.casm_tracks);
+    }
+
     score.unsupported = result.unsupported_features;
 
     return score;
@@ -81,8 +98,21 @@ std::string Sff1ReportGenerator::generateReport(const ParseResult& result) noexc
     ss << "  Known chunks:  " << score.known_chunks << "\n";
     ss << "  Unknown chunks: " << score.unknown_chunks << "\n";
     ss << "  Sections:      " << score.parsed_sections << "\n";
+    ss << "  CASM sections: " << result.sections_parsed.size() << "\n";
     ss << "  Events:        " << score.total_events << "\n";
-    ss << "  MegaVoice candidates: " << score.megavoice_candidates << "\n\n";
+    ss << "  MegaVoice candidates: " << score.megavoice_candidates << "\n";
+    ss << "  CASM sections: " << score.casm_sections << "\n";
+    ss << "  CASM tracks:   " << score.casm_tracks
+       << " (" << score.bass_tracks << " bass)\n\n";
+
+    // CASM arranger section listing (from Sdec/Ctb2)
+    if (!result.casm_sections.empty()) {
+        ss << "  Arranger sections (CASM):\n";
+        for (const auto& cs : result.casm_sections) {
+            ss << "    " << cs.name << " (" << cs.tracks.size() << " tracks)\n";
+        }
+        ss << "\n";
+    }
 
     // Chunk listing
     ss << "  Chunks:\n";
@@ -146,6 +176,7 @@ std::string Sff1ReportGenerator::generateCompatibilityTable(const CompatibilityS
     ss << "  │ Parse success                │ " << std::setw(5) << fmt(score.parse_success) << " │\n";
     ss << "  │ Structural fidelity          │ " << std::setw(5) << fmt(score.structural_fidelity) << " │\n";
     ss << "  │ Event parse rate             │ " << std::setw(5) << fmt(score.event_parse_rate) << " │\n";
+    ss << "  │ Harmonic fidelity (CASM)     │ " << std::setw(5) << fmt(score.harmonic_fidelity) << " │\n";
     ss << "  └──────────────────────────────┴───────┘\n";
 
     return ss.str();

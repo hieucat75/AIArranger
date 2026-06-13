@@ -1,4 +1,6 @@
 #include "importers/sff1/sff1_mapper.h"
+#include <algorithm>
+#include <cctype>
 
 namespace ai_arranger::importers::sff1 {
 
@@ -6,7 +8,8 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
     SffToUasfResult result;
     result.success = false;
 
-    if (!parseResult.success || parseResult.sections.empty()) {
+    if (!parseResult.success ||
+        (parseResult.sections.empty() && parseResult.casm_sections.empty())) {
         result.error = "No sections to map";
         return result;
     }
@@ -53,9 +56,44 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
         style.sections.push_back(std::move(section));
     }
 
+    // ── CASM-derived section structure (Task D) ────────────────────────
+    // Build UASF sections from the CASM Sdec/Ctb2 data: real section names,
+    // per-track roles and channels. Events are NOT attached here — they
+    // remain in the single SMF MTrk (per-section event splitting is Gate 8+).
+    for (const auto& cs : parseResult.casm_sections) {
+        uasf::SectionDefinition sec;
+        sec.type = mapCasmSectionType(cs.name);
+        sec.name = cs.name;
+        sec.bars = 0;
+        sec.resolution = style.resolution;
+        sec.beats_per_bar = 4;
+        sec.beat_note = 4;
+
+        for (const auto& t : cs.tracks) {
+            uasf::TrackDefinition track;
+            track.name = t.name;
+            track.midi_channel = t.source_channel;
+            track.role = mapCasmTrackRole(t);
+            track.is_drum = (track.role == uasf::TrackRole::Drum ||
+                             track.role == uasf::TrackRole::Percussion);
+            track.articulation.profile = uasf::ArticulationProfile::Generic;
+            track.articulation.fidelity = uasf::FidelityRequirement::High;
+            sec.tracks.push_back(std::move(track));
+        }
+        result.casm_sections.push_back(std::move(sec));
+    }
+
     // Check for unmapped features
     if (!parseResult.unsupported_features.empty()) {
         result.unmapped_features = parseResult.unsupported_features;
+    }
+
+    // No silent fallback (rule #5): NTR/NTT have no representation in UASF v1.
+    if (!parseResult.casm_configs.empty()) {
+        result.unmapped_features.push_back(
+            "CASM NTR/NTT transposition rules not representable in UASF v1 (" +
+            std::to_string(parseResult.casm_configs.size()) +
+            " track configs); roles inferred from name/channel, not transposition");
     }
 
     result.success = true;
@@ -95,6 +133,68 @@ uasf::TrackRole Sff1ToUasfMapper::mapTrackRole(SffTrackRole sffRole) noexcept {
         case SffTrackRole::Phrase2:  return uasf::TrackRole::Phrase2;
         default:                     return uasf::TrackRole::Accompaniment;
     }
+}
+
+uasf::TrackRole Sff1ToUasfMapper::mapCasmTrackRole(const CasmTrackConfig& cfg) noexcept {
+    std::string n;
+    n.reserve(cfg.name.size());
+    for (char c : cfg.name)
+        n.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+
+    auto has = [&](const char* s) { return n.find(s) != std::string::npos; };
+
+    // Drums live on the GM percussion channel (0-based 9) regardless of name.
+    if (cfg.source_channel == 9 || has("rhythm") || has("drum")) {
+        // Rhythm2 = percussion overlay, Rhythm1 / main kit = drums
+        // (consistent with mapTrackRole's SffTrackRole convention).
+        if (has("rhythm2")) return uasf::TrackRole::Percussion;
+        return uasf::TrackRole::Drum;
+    }
+    // Bass: explicit name or NTT bass-note conversion flag.
+    if (has("bass") || cfg.ntt_bass) return uasf::TrackRole::Bass;
+    if (has("chord"))                return uasf::TrackRole::Chord;
+    if (has("pad"))                  return uasf::TrackRole::Pad;
+    if (has("phrase2"))              return uasf::TrackRole::Phrase2;
+    if (has("phrase"))               return uasf::TrackRole::Phrase1;
+
+    // Named instrument (Piano, Strings, Tbn, ...) with no structural keyword.
+    // NTR/NTT alone do not determine a musical role, so we do not guess.
+    return uasf::TrackRole::Accompaniment;
+}
+
+uasf::SectionType Sff1ToUasfMapper::mapCasmSectionType(const std::string& name) noexcept {
+    std::string n;
+    n.reserve(name.size());
+    for (char c : name)
+        n.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+
+    auto has = [&](const char* s) { return n.find(s) != std::string::npos; };
+
+    if (has("intro")) {
+        if (has(" c")) return uasf::SectionType::Intro3;
+        if (has(" b")) return uasf::SectionType::Intro2;
+        return uasf::SectionType::Intro1;
+    }
+    if (has("ending")) {
+        if (has(" c")) return uasf::SectionType::Ending3;
+        if (has(" b")) return uasf::SectionType::Ending2;
+        return uasf::SectionType::Ending1;
+    }
+    if (has("break")) return uasf::SectionType::Break;
+    if (has("fill")) {
+        // "Fill In AA/BB/CC/DD" map to the matching main variant.
+        if (has("bb")) return uasf::SectionType::Fill2;
+        if (has("cc")) return uasf::SectionType::Fill3;
+        if (has("dd")) return uasf::SectionType::Fill4;
+        return uasf::SectionType::Fill1;
+    }
+    if (has("main")) {
+        if (has(" d")) return uasf::SectionType::Main4;
+        if (has(" c")) return uasf::SectionType::Main3;
+        if (has(" b")) return uasf::SectionType::Main2;
+        return uasf::SectionType::Main1;
+    }
+    return uasf::SectionType::Main1;
 }
 
 uasf::MidiEvent Sff1ToUasfMapper::mapMidiEvent(const SffMidiEvent& sffEv) noexcept {

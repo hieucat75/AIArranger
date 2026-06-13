@@ -79,6 +79,30 @@ struct CasmSectionInfo {
     uint8_t megavoice_high;  // Velocity range high
 };
 
+// ── CASM Track Configuration ──────────────────────────────────────
+// One per Ctb2 source-channel block. Field offsets validated against
+// 4 real Genos .S718 files — see docs/importers/casm-structure-notes.md.
+struct CasmTrackConfig {
+    std::string name;           // Track name (8-byte field, trimmed)
+    uint8_t     source_channel; // MIDI source channel (0-15)
+    uint8_t     dest_channel;   // MIDI destination channel (0-15)
+    uint8_t     high_key;       // Note limit high
+    uint8_t     low_key;        // Note limit low
+    uint8_t     ntr;            // Note Transposition Rule value
+    uint8_t     ntt;            // Note Transposition Table type (bits 0-6)
+    bool        ntt_bass;       // NTT bit 7: bass-note conversion enabled
+    bool        is_megavoice;   // Megavoice candidate flag
+};
+
+// ── CASM Section (from Sdec declaration) ──────────────────────────
+// One per Sdec sub-chunk. Groups the Ctb2 track configs that follow it
+// within the same CSEG. Section names are the canonical Yamaha labels
+// ("Main A", "Fill In AA", "Intro B", "Ending A", ...).
+struct CasmSection {
+    std::string name;
+    std::vector<CasmTrackConfig> tracks;
+};
+
 // ── MIDI Event (raw SFF1) ─────────────────────────────────────────
 struct SffMidiEvent {
     uint32_t tick;
@@ -126,6 +150,9 @@ struct ParseResult {
     uint32_t unknown_chunks;
     uint32_t parsed_sections;
     uint32_t parsed_events;
+    std::vector<CasmTrackConfig> casm_configs;
+    std::vector<std::string> sections_parsed;
+    std::vector<CasmSection> casm_sections;
 };
 
 // ── Supported Chunk IDs ───────────────────────────────────────────

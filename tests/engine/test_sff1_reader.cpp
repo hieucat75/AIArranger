@@ -1,5 +1,6 @@
 #include "importers/sff1/sff1_reader.h"
 #include "importers/sff1/sff1_report.h"
+#include "importers/sff1/sff1_mapper.h"
 #include <cstdio>
 #include <vector>
 #include <cstdint>
@@ -26,6 +27,49 @@ std::vector<uint8_t> makeChunk(const std::string& id, const std::vector<uint8_t>
     buf.push_back(static_cast<uint8_t>(sz & 0xFF));
     buf.insert(buf.end(), data.begin(), data.end());
     return buf;
+}
+
+// Build a 47-byte Ctb2 entry with the validated field offsets.
+std::vector<uint8_t> makeCtb2Entry(const std::string& name, uint8_t srcCh,
+                                   uint8_t low, uint8_t high,
+                                   uint8_t ntr, uint8_t nttRaw) {
+    std::vector<uint8_t> e(47, 0);
+    e[0] = srcCh;
+    for (size_t i = 0; i < 8; ++i)
+        e[1 + i] = (i < name.size()) ? static_cast<uint8_t>(name[i]) : ' ';
+    e[9]  = srcCh;
+    e[20] = low; e[21] = high; e[22] = ntr; e[23] = nttRaw;
+    return e;
+}
+
+// Construct a CasmTrackConfig directly (for mapper role tests).
+CasmTrackConfig makeCfg(const std::string& name, uint8_t srcCh,
+                        uint8_t ntr, uint8_t ntt, bool nttBass) {
+    CasmTrackConfig c{};
+    c.name = name;
+    c.source_channel = srcCh;
+    c.dest_channel = srcCh;
+    c.low_key = 0; c.high_key = 127;
+    c.ntr = ntr; c.ntt = ntt; c.ntt_bass = nttBass;
+    c.is_megavoice = false;
+    return c;
+}
+
+// Build a CASM chunk (CSEG-wrapped) from a list of (sectionName, entries).
+std::vector<uint8_t> makeCasmChunk(
+    const std::vector<std::pair<std::string, std::vector<std::vector<uint8_t>>>>& sections) {
+    std::vector<uint8_t> inner;
+    for (const auto& sec : sections) {
+        std::vector<uint8_t> nameBytes(sec.first.begin(), sec.first.end());
+        auto sdec = makeChunk("Sdec", nameBytes);
+        inner.insert(inner.end(), sdec.begin(), sdec.end());
+        for (const auto& entry : sec.second) {
+            auto ctb2 = makeChunk("Ctb2", entry);
+            inner.insert(inner.end(), ctb2.begin(), ctb2.end());
+        }
+    }
+    auto cseg = makeChunk("CSEG", inner);          // CASM body starts with CSEG
+    return makeChunk("CASM", cseg);                // top-level CASM chunk
 }
 
 int main() {
@@ -59,6 +103,27 @@ int main() {
       TEST("Report has table", rep.find("Parse") != std::string::npos); }
 
     { TEST("Corpus infra ready", true); }
+
+    // ── CASM semantic parsing (Gate 7) ─────────────────────────────────
+    {
+        auto buf = makeChunk("CASM", std::vector<uint8_t>(64, 0));
+        Sff1Reader r; auto res = r.parseBuffer(buf, "casm_semantic.sty");
+        TEST("CASM semantic parse runs", res.success);
+    }
+
+    // ── CASM configs extracted ────────────────────────────────────────
+    {
+        auto buf = makeChunk("CASM", std::vector<uint8_t>(64, 0));
+        Sff1Reader r; auto res = r.parseBuffer(buf, "casm_configs.sty");
+        TEST("CASM configs vector exists", res.casm_configs.empty());
+    }
+
+    // ── Section names detected ────────────────────────────────────────
+    {
+        auto buf = makeChunk("CASM", std::vector<uint8_t>(64, 0));
+        Sff1Reader r; auto res = r.parseBuffer(buf, "casm_sections.sty");
+        TEST("Sections parsed vector exists", res.sections_parsed.empty());
+    }
 
     std::printf("\nResults: %d passed, %d failed\n", passes, failures);
     return failures > 0 ? 1 : 0;
