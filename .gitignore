@@ -9,3 +9,6 @@ timing-benchmark
 CMakeCache.txt
 CMakeFiles/
 cmake-build-*/
+sff1-parser
+test-*
+*.o
