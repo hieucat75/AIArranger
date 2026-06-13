@@ -49,6 +49,10 @@ private:
                                               size_t size,
                                               uint32_t& offset) noexcept;
 
+    // ── SMF/SFF2 helpers ────────────────────────────────────────────
+    bool parseMThd(const SffChunk& chunk) noexcept;
+    bool parseMTrk(const SffChunk& chunk) noexcept;
+
     // ── State ──────────────────────────────────────────────────────
     const uint8_t* data_{nullptr};
     size_t size_{0};
