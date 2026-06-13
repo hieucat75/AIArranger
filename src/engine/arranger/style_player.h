@@ -74,11 +74,12 @@ private:
     ChordInput               chord_input_;
     SectionSequencer         sequencer_;
 
-    // Current section event iterator
-    size_t current_event_index_{0};
+    // Absolute tick at which the current section began playing.
+    int64_t section_origin_tick_{0};
 
-    // Last dispatched tick (for catching up after section switch)
-    int64_t last_dispatched_tick_{0};
+    // Last relative tick (within the current section) already dispatched.
+    // -1 means "nothing dispatched yet" so tick-0 events still fire.
+    int64_t section_rel_cursor_{-1};
 
     // Event callback for demo/debug
     PlaybackEventCallback event_cb_{nullptr};

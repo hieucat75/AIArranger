@@ -36,8 +36,8 @@ bool StylePlayer::start(int introSectionIndex) noexcept {
     clock_.start();
 
     sequencer_.setCurrentChord(chords::CMaj);
-    current_event_index_ = 0;
-    last_dispatched_tick_ = 0;
+    section_origin_tick_ = 0;
+    section_rel_cursor_ = -1;
 
     // Queue intro section
     sequencer_.queueSection(introSectionIndex);
@@ -48,6 +48,10 @@ bool StylePlayer::start(int introSectionIndex) noexcept {
 }
 
 void StylePlayer::stop() noexcept {
+    // Flush any notes still sounding so stopping never leaves stuck notes.
+    panic_handler_.flushActiveNotes([this](const uasf::MidiEvent& ev) {
+        scheduler_.scheduleEvent(ev);
+    });
     clock_.stop();
     sequencer_.panic();
     if (event_cb_) event_cb_("STOP");
@@ -83,6 +87,14 @@ void StylePlayer::switchSection(int index) noexcept {
 }
 
 void StylePlayer::setChord(Chord chord) noexcept {
+    // Flush notes voiced under the previous chord so the re-voicing under the
+    // new chord does not leave stuck notes (NoteOff would otherwise transpose
+    // to a different pitch than the NoteOn that started the note).
+    if (clock_.isRunning()) {
+        panic_handler_.flushActiveNotes([this](const uasf::MidiEvent& ev) {
+            scheduler_.scheduleEvent(ev);
+        });
+    }
     chord_input_.setChord(chord);
     sequencer_.setCurrentChord(chord);
     if (event_cb_) {
@@ -105,7 +117,13 @@ void StylePlayer::tick() noexcept {
     // Advance section sequencer (check bar boundary)
     bool sectionSwitched = sequencer_.advance(currentTick, barSize);
     if (sectionSwitched) {
-        current_event_index_ = 0;
+        // Stop any notes left sounding from the previous section before the
+        // new section begins, so a mid-note switch never leaves stuck notes.
+        panic_handler_.flushActiveNotes([this](const uasf::MidiEvent& ev) {
+            scheduler_.scheduleEvent(ev);
+        });
+        section_origin_tick_ = currentTick;
+        section_rel_cursor_ = -1;
     }
 
     // Get current section
@@ -144,31 +162,52 @@ void StylePlayer::setEventCallback(PlaybackEventCallback cb) noexcept {
 void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
                                           int64_t currentTick,
                                           Chord chord) noexcept {
-    bool dispatchedAny = false;
+    // Monotonic cursor: dispatch every event whose section-relative tick falls
+    // in (section_rel_cursor_, rel]. Each event fires exactly once as playback
+    // time advances, so NoteOn/NoteOff pairs stay balanced (no stuck notes).
+    const int64_t rel = currentTick - section_origin_tick_;
+    if (rel < 0 || rel <= section_rel_cursor_) return;
 
-    for (; current_event_index_ < section.tracks.size(); ++current_event_index_) {
-        const auto& track = section.tracks[current_event_index_];
+    for (const auto& track : section.tracks) {
         for (const auto& event : track.events) {
-            if (event.tick > currentTick - last_dispatched_tick_) break;
+            const int64_t et = static_cast<int64_t>(event.tick);
+            if (et <= section_rel_cursor_ || et > rel) continue;
 
-            // Transpose note based on chord and track role
             uasf::MidiEvent dispatched = event;
             if (dispatched.type == uasf::MidiEventType::NoteOn ||
                 dispatched.type == uasf::MidiEventType::NoteOff) {
                 dispatched.data1 = transposeNote(dispatched.data1, chord, track.role);
             }
+            // Absolute tick = section origin + event's in-section position.
+            dispatched.tick = section_origin_tick_ + et;
 
-            // Adjust tick to be relative to current playback position
-            dispatched.tick = event.tick + last_dispatched_tick_;
+            // Track active notes so section switch / stop / chord change can
+            // flush them and keep on/off balanced. Dedupe against the active
+            // set: chord transposition can voice two source notes onto the
+            // same MIDI note, so suppress redundant retriggers and orphan
+            // note-offs to keep one NoteOn/NoteOff pair per sounding note.
+            const bool isNoteOn  = dispatched.type == uasf::MidiEventType::NoteOn &&
+                                   dispatched.data2 > 0;
+            const bool isNoteOff = dispatched.type == uasf::MidiEventType::NoteOff ||
+                                   (dispatched.type == uasf::MidiEventType::NoteOn &&
+                                    dispatched.data2 == 0);
+            if (isNoteOn) {
+                if (panic_handler_.isNoteActive(dispatched.channel, dispatched.data1)) {
+                    continue; // already sounding — skip redundant retrigger
+                }
+                panic_handler_.noteOn(dispatched.channel, dispatched.data1);
+            } else if (isNoteOff) {
+                if (!panic_handler_.isNoteActive(dispatched.channel, dispatched.data1)) {
+                    continue; // nothing to turn off — skip orphan/duplicate
+                }
+                panic_handler_.noteOff(dispatched.channel, dispatched.data1);
+            }
 
             scheduler_.scheduleEvent(dispatched);
-            dispatchedAny = true;
         }
     }
 
-    if (dispatchedAny) {
-        last_dispatched_tick_ = currentTick;
-    }
+    section_rel_cursor_ = rel;
 }
 
 uint8_t StylePlayer::transposeNote(uint8_t note, Chord chord, uasf::TrackRole role) const noexcept {
