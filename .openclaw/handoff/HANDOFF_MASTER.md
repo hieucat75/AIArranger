@@ -16,9 +16,16 @@
 | G5: SFF1 Parser Spike | ✅ Merged | ebaa59c | 140/140 |
 | G6: SFF2/SMF Corpus Validation | ✅ Merged | 72131a5 | 140/140 |
 | G7: CASM Semantic Analysis | ✅ BRANCH (ready) | b744774 | 173/173 |
+| G8: NTR/NTT + Chord-Aware Transpose | ✅ Merged into G9 | e33ea1e | (folded into G9) |
+| G9: Multi-Playback Validation | ✅ BRANCH (ready) | f72e836 | 218/218 (14 binaries, 0 fail) |
 
 ### Current Branch
-`gate-7-casm-semantic-analysis` — NOT merged to main yet
+`gate-9-multi-playback-validation` — includes the Gate 8 merge; NOT merged to main yet.
+PR #6 carries both the G8 merge and the Gate 9 commits.
+
+> Note: the current committed test sources enumerate **143** baseline (G7+G8) assertions
+> in this tree; Gate 9 adds 75 → **218 total** (the earlier "173" figure reflected an older
+> enumeration and is unrelated to Gate 9). See `docs/gate-plans/GATE_9_HANDOFF.md`.
 
 ### Repository
 https://github.com/hieucat75/AIArranger
