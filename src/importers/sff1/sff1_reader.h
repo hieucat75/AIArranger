@@ -53,6 +53,10 @@ private:
     bool parseMThd(const SffChunk& chunk) noexcept;
     bool parseMTrk(const SffChunk& chunk) noexcept;
 
+    // ── CASM parsing (Claude-generated) ──────────────────────────────
+    bool parseCasm(const uint8_t* data, size_t size) noexcept;
+    void parseCtb2Block(const uint8_t* data, size_t size) noexcept;
+
     // ── State ──────────────────────────────────────────────────────
     const uint8_t* data_{nullptr};
     size_t size_{0};

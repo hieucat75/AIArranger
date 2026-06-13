@@ -79,9 +79,18 @@ struct CasmSectionInfo {
     uint8_t megavoice_high;  // Velocity range high
 };
 
+// ── CASM Track Configuration ──────────────────────────────────────
+struct CasmTrackConfig {
+    std::string name;           // Track name (20 bytes)
+    uint8_t     high_key;       // Note range high
+    uint8_t     low_key;        // Note range low
+    uint8_t     ntr;            // Note Transposition Rule value
+    uint8_t     ntt;            // Note Transposition Table value
+    bool        is_megavoice;   // Megavoice candidate flag
+};
+
 // ── MIDI Event (raw SFF1) ─────────────────────────────────────────
 struct SffMidiEvent {
-    uint32_t tick;
     uint8_t  status;
     uint8_t  data1;
     uint8_t  data2;
@@ -126,6 +135,7 @@ struct ParseResult {
     uint32_t unknown_chunks;
     uint32_t parsed_sections;
     uint32_t parsed_events;
+    std::vector<CasmTrackConfig> casm_configs;
 };
 
 // ── Supported Chunk IDs ───────────────────────────────────────────

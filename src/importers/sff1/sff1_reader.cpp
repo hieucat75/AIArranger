@@ -67,6 +67,9 @@ ParseResult Sff1Reader::parseBuffer(const std::vector<uint8_t>& buffer,
             } else if (chunk.chunk_id == "MTrk") {
                 // SMF track — extract MIDI events
                 parseMTrk(chunk);
+            } else if (chunk.chunk_id == "CASM") {
+                // CASM — semantic configuration data
+                parseCasm(chunk.data.data(), chunk.data.size());
             }
         } else {
             // End of readable chunks
