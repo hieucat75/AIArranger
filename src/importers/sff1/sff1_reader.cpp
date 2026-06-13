@@ -31,6 +31,7 @@ ParseResult Sff1Reader::parseBuffer(const std::vector<uint8_t>& buffer,
     data_ = buffer.data();
     size_ = buffer.size();
     pos_ = 0;
+    casm_section_idx_ = -1;
     result_ = ParseResult{};
     result_.success = false;
     result_.file_path = filename;
@@ -407,13 +408,22 @@ bool Sff1Reader::parseCasm(const uint8_t* data, size_t size) noexcept {
             // Inner CSEG — another section
             parseCasm(data + pos, sub_size);
         } else if (sub_id == "Sdec") {
-            // Section definition — extract section name
-            if (sub_size > 0 && sub_size <= 32) {
+            // Section definition — extract section name and open a new
+            // CASM section. Subsequent Ctb2 blocks attach to it.
+            if (sub_size > 0 && sub_size <= 64) {
                 std::string sec_name(reinterpret_cast<const char*>(data + pos), sub_size);
                 // Strip padding
-                while (!sec_name.empty() && sec_name.back() <= 32)
+                while (!sec_name.empty() &&
+                       static_cast<uint8_t>(sec_name.back()) <= 32)
                     sec_name.pop_back();
-                result_.sections_parsed.push_back(sec_name);
+                if (!sec_name.empty()) {
+                    result_.sections_parsed.push_back(sec_name);
+                    CasmSection cs;
+                    cs.name = sec_name;
+                    result_.casm_sections.push_back(std::move(cs));
+                    casm_section_idx_ =
+                        static_cast<int>(result_.casm_sections.size()) - 1;
+                }
             }
         }
 
@@ -463,6 +473,12 @@ void Sff1Reader::parseCtb2Block(const uint8_t* data, size_t size) noexcept {
     // not from CASM track config — do not guess here.
     cfg.is_megavoice = false;
 
+    // Attach to the current CASM section (opened by the preceding Sdec),
+    // then keep a flat copy for callers that don't need section grouping.
+    if (casm_section_idx_ >= 0 &&
+        casm_section_idx_ < static_cast<int>(result_.casm_sections.size())) {
+        result_.casm_sections[casm_section_idx_].tracks.push_back(cfg);
+    }
     result_.casm_configs.push_back(std::move(cfg));
 }
 
