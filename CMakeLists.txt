@@ -72,7 +72,7 @@ foreach(test_file ${REALTIME_TEST_SRC})
 endforeach()
 
 # ── Gate 14 headless app-shell tests (session/control/ui/midi) ────────
-file(GLOB SHELL_TEST_SRC tests/integration/*.cpp tests/ui/*.cpp)
+file(GLOB SHELL_TEST_SRC tests/integration/*.cpp tests/ui/*.cpp tests/midi/*.cpp)
 foreach(test_file ${SHELL_TEST_SRC})
     get_filename_component(test_name ${test_file} NAME_WE)
     add_executable(${test_name} ${test_file})

@@ -18,11 +18,15 @@ MainComponent::MainComponent() {
         bridge_.sendControl(e);
     });
 
+    // MIDI output device selection: UI -> manager (engine thread owns sending).
+    midiVm_.setSelectSink([this](int index) { driver_.midiManager().selectDevice(index); });
+
     addAndMakeVisible(transport_);
     addAndMakeVisible(chord_);
     addAndMakeVisible(diagnostics_);
     addAndMakeVisible(styles_);
     addAndMakeVisible(console_);
+    addAndMakeVisible(midiOut_);
 
     driver_.start();
     setSize(960, 640);
@@ -45,6 +49,12 @@ void MainComponent::timerCallback() {
         any = true;
     }
     if (any) { transport_.refresh(); chord_.refresh(); diagnostics_.refresh(); }
+
+    // Mirror MIDI output device list + connection state into the panel.
+    auto& mm = driver_.midiManager();
+    midiVm_.setDevices(mm.devices());
+    midiVm_.setConnection(mm.state(), mm.selectedName(), mm.selectedIndex());
+    midiOut_.refresh();
 }
 
 void MainComponent::paint(juce::Graphics& g) {
@@ -58,6 +68,8 @@ void MainComponent::resized() {
     auto mid = r.removeFromTop(180);
     chord_.setBounds(mid.removeFromLeft(mid.getWidth() / 2));
     diagnostics_.setBounds(mid);
+    auto midiRow = r.removeFromTop(90);
+    midiOut_.setBounds(midiRow);
     styles_.setBounds(r.removeFromLeft(r.getWidth() / 2));
     console_.setBounds(r);
 }
