@@ -71,7 +71,8 @@ reference to Yamaha/Korg MUST include:
 | G10B (engine): swing + intro-fix + Guitar/MegaVoice + corpus split | ✅ **Gate 10B Engine PASS** (branch `gate-10b-...`, PR open) | (branch) | 345/345 (22 binaries, 0 fail) |
 | G10B (hardware): Yamaha/Korg validation + NTT A/B calibration | ⏳ **PENDING PTH** (needs hardware; checklist + calibration docs ready) | — | — |
 | G11: KORG validation harness (pre-hardware, synthetic) | ✅ **Gate 11 Harness PASS (synthetic)** (merged PR #14, tag `v0.11.0-korg-validation-harness`) | 41a2bf7 | 430/430 (29 binaries, 0 fail) |
-| G12: Realtime performer layer (deterministic, synthetic) | ✅ **Gate 12 Engine PASS** (branch, PR open) | (branch) | 527/527 (38 binaries, 0 fail) |
+| G12: Realtime performer layer (deterministic, synthetic) | ✅ **Gate 12 Engine PASS** (merged PR #16, tag `v0.12.0-realtime-performer`) | e1cc59c | 527/527 (38 binaries, 0 fail) |
+| G13: StylePlayer E2E performer integration (deterministic, synthetic) | ✅ **Gate 13 Engine PASS** (branch, PR open) | (branch) | 576/576 (46 binaries, 0 fail) |
 
 ### Current Branch / Release
 `main` — Gate 9 merged via PR #6. Merge SHA `edb6a20`, tag **`v0.9.0-gate9`**.
@@ -110,6 +111,16 @@ reference to Yamaha/Korg MUST include:
 - ✅ 7 new test binaries / 85 assertions; sample report committed.
 - ⏳ Reactivate with a real Korg PA700/PA1000: drop a capture in
   `fixtures/korg/<MODEL>/`, run `korg-validate`. No code changes needed.
+
+### Gate 13 — StylePlayer E2E performer integration ✅ Engine PASS (see `docs/gate-plans/GATE_13_HANDOFF.md`)
+> Wires the Gate 12 performer modules into the real StylePlayer via a stateless
+> `PerformerAdapter` (`src/engine/integration/`): control events + chord input
+> drive section changes (bar-quantized), NTT transpose, panic/recovery. No
+> engine-core behaviour change; sequencer stays the bar authority. Deterministic,
+> lock-free, synthetic-only. **Software/E2E PASS; hardware/KORG claims FORBIDDEN.**
+- ✅ Adapter + 8 E2E test binaries / 49 assertions; sample E2E latency report
+  committed (`deterministic:true` + `hardware_validated:false`).
+- ⏳ Live korg-playback CLI adapter swap + chord.bass-in-dispatch = future work.
 
 ### Gate 12 — Realtime performer layer ✅ Engine PASS (see `docs/gate-plans/GATE_12_HANDOFF.md`)
 > Live-performance control layer (sync start/stop, fills, variations, chord scan
