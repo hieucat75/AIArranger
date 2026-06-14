@@ -70,7 +70,8 @@ reference to Yamaha/Korg MUST include:
 | G10A: NTT + Articulation + CASM hardening (engine integration) | ✅ **Gate 10A Engine Integration PASS** (merged PR #8, tag `v0.10.0-gate10`) | 79e9f17 | 292/292 (19 binaries, 0 fail) |
 | G10B (engine): swing + intro-fix + Guitar/MegaVoice + corpus split | ✅ **Gate 10B Engine PASS** (branch `gate-10b-...`, PR open) | (branch) | 345/345 (22 binaries, 0 fail) |
 | G10B (hardware): Yamaha/Korg validation + NTT A/B calibration | ⏳ **PENDING PTH** (needs hardware; checklist + calibration docs ready) | — | — |
-| G11: KORG validation harness (pre-hardware, synthetic) | ✅ **Gate 11 Harness PASS (synthetic)** (branch, PR open) | (branch) | 430/430 (29 binaries, 0 fail) |
+| G11: KORG validation harness (pre-hardware, synthetic) | ✅ **Gate 11 Harness PASS (synthetic)** (merged PR #14, tag `v0.11.0-korg-validation-harness`) | 41a2bf7 | 430/430 (29 binaries, 0 fail) |
+| G12: Realtime performer layer (deterministic, synthetic) | ✅ **Gate 12 Engine PASS** (branch, PR open) | (branch) | 527/527 (38 binaries, 0 fail) |
 
 ### Current Branch / Release
 `main` — Gate 9 merged via PR #6. Merge SHA `edb6a20`, tag **`v0.9.0-gate9`**.
@@ -109,6 +110,17 @@ reference to Yamaha/Korg MUST include:
 - ✅ 7 new test binaries / 85 assertions; sample report committed.
 - ⏳ Reactivate with a real Korg PA700/PA1000: drop a capture in
   `fixtures/korg/<MODEL>/`, run `korg-validate`. No code changes needed.
+
+### Gate 12 — Realtime performer layer ✅ Engine PASS (see `docs/gate-plans/GATE_12_HANDOFF.md`)
+> Live-performance control layer (sync start/stop, fills, variations, chord scan
+> modes, split/manual bass, vendor-neutral control surface, performer panic,
+> latency budget) on top of the engine. Deterministic, lock-free RT path, no DSP,
+> no UI, no hardware. **Software/realtime PASS allowed; hardware parity + KORG
+> compatibility claims FORBIDDEN.** Reports emit `deterministic:true` +
+> `hardware_validated:false`.
+- ✅ 9 modules under `src/engine/{performance,control,chord}`; 9 new test
+  binaries / 97 assertions; sample latency report committed.
+- ⏳ Live MIDI front-end adapters + end-to-end StylePlayer wiring = future work.
 
 ### Gate 10B — hardware slice (PENDING PTH, needs a real device)
 1. **Yamaha/Korg hardware playback validation** — `GATE_10B_HARDWARE_CHECKLIST.md`
