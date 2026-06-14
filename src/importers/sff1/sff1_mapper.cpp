@@ -18,7 +18,14 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
     style.name = "Imported from " + parseResult.file_path;
     style.format_version = "1.0";
     style.tempo_bpm = 120;
+
+    // Resolution (PPQN) must match the source so the playback clock plays the
+    // event ticks at the correct tempo. The MThd-derived section carries the
+    // real SMF division; fall back to 480 only if no section reports one.
     style.resolution = 480;
+    for (const auto& s : parseResult.sections) {
+        if (s.resolution > 0) { style.resolution = s.resolution; break; }
+    }
 
     for (const auto& sffSection : parseResult.sections) {
         uasf::SectionDefinition section;

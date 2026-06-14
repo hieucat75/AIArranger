@@ -119,6 +119,14 @@ DeserializeResult UasfDeserializer::deserialize(const std::vector<uint8_t>& data
         style.sections.push_back(std::move(section));
     }
 
+    // The file header carries no style-level resolution, so recover it from
+    // the (round-tripped) per-section resolution. Without this the playback
+    // clock would default to 480 PPQN and play higher-PPQN styles (e.g. 1920)
+    // at the wrong tempo — effectively silent.
+    for (const auto& sec : style.sections) {
+        if (sec.resolution > 0) { style.resolution = sec.resolution; break; }
+    }
+
     result.success = true;
     return result;
 }
