@@ -48,4 +48,17 @@ bool RealtimeStateMachine::apply(PerformerInput in) noexcept {
     return changed;
 }
 
+bool RealtimeStateMachine::tryApply(PerformerInput in) noexcept {
+    PerformerState cur = state_.load(std::memory_order_acquire);
+    for (;;) {
+        bool changed = false;
+        const PerformerState n = next(cur, in, changed);
+        if (!changed) return false;  // no-op for this state
+        if (state_.compare_exchange_weak(cur, n, std::memory_order_acq_rel,
+                                         std::memory_order_acquire))
+            return true;             // we performed the change
+        // CAS failed: `cur` reloaded; retry against the new state.
+    }
+}
+
 } // namespace ai_arranger::performance

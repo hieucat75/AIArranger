@@ -45,6 +45,11 @@ public:
     // thread); readers use state().
     bool apply(PerformerInput in) noexcept;
 
+    // Race-safe single-fire transition (compare-exchange loop). Under concurrent
+    // callers, exactly ONE caller that performs a given state change returns true
+    // — used for sync-start so rapid/concurrent chord triggers fire start once.
+    bool tryApply(PerformerInput in) noexcept;
+
     void reset() noexcept { state_.store(PerformerState::Idle, std::memory_order_release); }
 
     // Pure transition function (exposed for replay/testing). `changed` is set to
