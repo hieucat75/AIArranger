@@ -1,11 +1,18 @@
 # Gate 10B — Handoff (Hardware + Swing + NTT validation)
 
-> Branch `gate-10b-hardware-swing-ntt-validation` off `main` (`6ab8668`).
-> **Status: ✅ Gate 10B Engine PASS / ⏳ Hardware Pending.**
+> Branch `gate-10b-hardware-swing-ntt-validation` off `main` (`6ab8668`),
+> merged via PR #11 (`26d8e03`), tag `v0.10.1-gate10b-engine`.
+> **Status: ✅ Gate 10B Engine PASS / 🅓 Hardware DEFERRED_BY_PTH.**
 > 22 test binaries, 345 assertions, 0 failures. CI (GitHub Actions) green.
 > This closes the **engine-side** of Gate 10B. The **hardware-side** (manual
-> validation + NTT A/B calibration on a real Yamaha/Korg) is documented and
-> waiting on PTH with a device. **Not** "Gate 10B FULL PASS".
+> validation + NTT A/B calibration on a real Yamaha/Korg) was **explicitly
+> deferred by PTH on 2026-06-14** — docs are preserved, not in progress. **Not**
+> "Gate 10B FULL PASS"; hardware parity is **not claimed**
+> (see `docs/policy/CLAIMS_AND_RELEASE_NOTES_POLICY.md`).
+>
+> **Reactivation:** when PTH or a future maintainer signals readiness, re-open
+> `GATE_10B_HARDWARE_CHECKLIST.md` + `GATE_10B_NTT_CALIBRATION.md` and run them on
+> a real device — **no code changes required** to resume.
 
 ---
 
@@ -120,8 +127,9 @@
 
 ## 7. Residual risks / still pending
 
-- **Hardware validation (#1) + NTT calibration (#4)** require PTH + a real
-  device — docs are ready; results not yet captured.
+- **Hardware validation (#1) + NTT calibration (#4)** — **DEFERRED_BY_PTH
+  (2026-06-14)**. Docs preserved; results not captured. Hardware parity is NOT
+  claimed anywhere (see `docs/policy/CLAIMS_AND_RELEASE_NOTES_POLICY.md`).
 - **Swing feel** is theory-tuned; the right per-style percentage is a hardware
   call.
 - **Guitar/MegaVoice** are v1 approximations (chord voicing / keyswitch-or-
@@ -135,8 +143,10 @@
 
 ## 8. Merge status
 
-**MERGE_ALLOWED: NO** — pending PTH review (Gate discipline; do not merge to
-`main` without approval). Branch pushed; PR to be opened. CI green.
+**MERGED** — PR #11 approved by PTH and merged to `main` (merge SHA `26d8e03`),
+tag `v0.10.1-gate10b-engine`. Post-merge suite on `main`: 22 binaries / 345
+assertions / 0 failures; CI green.
 
-> Gate 10B **engine** slice is complete and green. Gate 10B **hardware** slice
-> (checklist + calibration) is the remaining work and needs a physical device.
+> Gate 10B **engine** slice is complete, merged, and green. Gate 10B **hardware**
+> slice (checklist + calibration) is **DEFERRED_BY_PTH** — preserved as a future
+> milestone, reactivate on a physical device with no code changes.

@@ -104,14 +104,20 @@ ROM sample là tác phẩm sáng tạo được bảo hộ bản quyền. Bundle
 - Logic Pro® — Apple
 - MainStage® — Apple
 
-**Quy tắc nominative fair use (được phép):**
+**Quy tắc nominative fair use (được phép về mặt trademark):**
 ```
 ✅ "Imports styles in Yamaha® .STY format"
-✅ "Compatible with Yamaha PSR and Tyros style files"
 ✅ "Supports Yamaha SFF1/SFF2 format"
 ✅ Disclosure: "Yamaha is a registered trademark of Yamaha Corporation.
    This app is not affiliated with or endorsed by Yamaha Corporation."
 ```
+
+> ⚠️ **Claims policy override:** the bare phrase "Compatible with Yamaha PSR/Tyros
+> style files" — while permissible under trademark nominative fair use — is
+> **NOT allowed** until real-device validation evidence is committed, per
+> `docs/policy/CLAIMS_AND_RELEASE_NOTES_POLICY.md`
+> (HARDWARE_REVIEW_STATUS: DEFERRED_BY_PTH). Use instead:
+> "Engine-side Yamaha SFF/CASM importer (hardware parity unverified)".
 
 **Tuyệt đối không được:**
 ```
