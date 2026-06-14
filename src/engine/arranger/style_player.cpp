@@ -1,4 +1,5 @@
 #include "engine/arranger/style_player.h"
+#include "engine/music/ntt.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -211,35 +212,17 @@ void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
 }
 
 uint8_t StylePlayer::transposeNote(uint8_t note, Chord chord, uasf::TrackRole role) const noexcept {
-    // Drum tracks are not transposed
-    if (role == uasf::TrackRole::Drum || role == uasf::TrackRole::Percussion) {
-        return note;
-    }
-
+    // Full NTR/NTT transposition (Gate 10 Task B). The crude root/fifth rule is
+    // replaced by the table-driven transform in engine/music/ntt. The rule pair
+    // is derived from the track role, which round-trips through the UASF format
+    // (the raw CASM NTR/NTT integers do not), so the transform stays correct for
+    // a deserialised style. Drums map to Bypass and are left untouched.
+    music::NtrRule ntr;
+    music::NttMode ntt;
+    music::defaultRuleForRole(role, ntr, ntt);
+    if (ntr == music::NtrRule::Bypass || ntt == music::NttMode::Bypass) return note;
     if (chord.type == ChordType::NoChord) return note;
-
-    // NTR-based transposition (from CASM / UASF articulation metadata)
-    uint8_t root = chord.root;
-    int16_t result = static_cast<int16_t>(note);
-
-    switch (chord.type) {
-        case ChordType::Major:
-            // chord tones are at root, root+4, root+7
-            result = root + ((note % 12) % 7 >= 4 ? 7 : 4);
-            break;
-        case ChordType::Minor:
-            result = root + ((note % 12) % 7 >= 4 ? 7 : 3);
-            break;
-        default:
-            // Default: shift by chord root offset from C (60)
-            result = static_cast<int16_t>(note) + (static_cast<int16_t>(root) - 60);
-            break;
-    }
-
-    // Clamp
-    if (result < 0) result = 0;
-    if (result > 127) result = 127;
-    return static_cast<uint8_t>(result);
+    return music::transpose(note, chord, ntr, ntt);
 }
 
 // ── Demo style builder ─────────────────────────────────────────────

@@ -16,6 +16,7 @@ file(GLOB_RECURSE ENGINE_SRC
     src/engine/midi/*.cpp
     src/engine/arranger/*.cpp
     src/engine/uasf/*.cpp
+    src/engine/music/*.cpp
 )
 
 add_library(arranger-engine STATIC ${ENGINE_SRC})
