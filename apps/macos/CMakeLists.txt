@@ -16,7 +16,8 @@ file(GLOB MACOS_APP_SRC Source/*.cpp)
 
 juce_add_gui_app(aiarranger-macos
     PRODUCT_NAME "AI Arranger"
-    COMPANY_NAME "AI Arranger")
+    COMPANY_NAME "AIArranger"
+    BUNDLE_ID "com.aiarranger.macos")
 
 target_sources(aiarranger-macos PRIVATE ${MACOS_APP_SRC})
 
