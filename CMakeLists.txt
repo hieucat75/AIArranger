@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
-project(ai-arranger-engine VERSION 0.2.0 LANGUAGES CXX)
+# C/OBJC/OBJCXX are required by the JUCE macOS app (.c/.m/.mm); the engine
+# itself is pure C++. Enabling them project-wide is harmless for engine targets.
+project(ai-arranger-engine VERSION 0.2.0 LANGUAGES C CXX OBJC OBJCXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

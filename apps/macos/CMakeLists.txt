@@ -8,7 +8,7 @@ include(FetchContent)
 FetchContent_Declare(
     juce
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-    GIT_TAG        7.0.12   # pinned stable
+    GIT_TAG        8.0.4    # macOS 15+/SDK-26 compatible (ScreenCaptureKit)
 )
 FetchContent_MakeAvailable(juce)
 
@@ -16,7 +16,8 @@ file(GLOB MACOS_APP_SRC Source/*.cpp)
 
 juce_add_gui_app(aiarranger-macos
     PRODUCT_NAME "AI Arranger"
-    COMPANY_NAME "AI Arranger")
+    COMPANY_NAME "AIArranger"
+    BUNDLE_ID "com.aiarranger.macos")
 
 target_sources(aiarranger-macos PRIVATE ${MACOS_APP_SRC})
 
