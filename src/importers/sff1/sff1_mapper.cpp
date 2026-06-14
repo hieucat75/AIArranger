@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cctype>
 #include <map>
+#include <set>
 
 namespace ai_arranger::importers::sff1 {
 
@@ -41,10 +42,25 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
     // everything shared one track (PR #7 known limitation).
     std::map<uint8_t, const CasmTrackConfig*> chanConfig;
     for (const auto& cfg : parseResult.casm_configs) {
+        // Defensive (Task D): a Ctb2 source-channel byte must be a valid MIDI
+        // channel (0-15). A corrupt/abnormal config byte can hold anything; it
+        // can never bind to a real event channel, so drop it with a warning
+        // rather than letting it shadow a valid config or wrap silently.
+        if (cfg.source_channel > 15) {
+            result.warnings.push_back(
+                "CASM track '" + cfg.name + "' has out-of-range source channel " +
+                std::to_string(static_cast<int>(cfg.source_channel)) +
+                " — ignored (expected 0-15)");
+            continue;
+        }
         // First config for a channel wins — keeps the role stable across the
         // section variants that repeat the same source channel.
         chanConfig.emplace(cfg.source_channel, &cfg);
     }
+
+    // Track channels we have already warned about so the fallback message is
+    // emitted once per channel, not once per section.
+    std::set<uint8_t> fallbackWarned;
 
     for (const auto& sffSection : parseResult.sections) {
         uasf::SectionDefinition section;
@@ -80,6 +96,12 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
                         track.name = "Channel " + std::to_string(static_cast<int>(ch));
                         track.role = (ch == 9) ? uasf::TrackRole::Drum
                                                : uasf::TrackRole::Phrase1;
+                        if (fallbackWarned.insert(ch).second) {
+                            result.warnings.push_back(
+                                "Channel " + std::to_string(static_cast<int>(ch)) +
+                                " has events but no CASM metadata — using " +
+                                (ch == 9 ? "drum" : "melodic") + " fallback role");
+                        }
                     }
                     track.is_drum = (track.role == uasf::TrackRole::Drum ||
                                      track.role == uasf::TrackRole::Percussion);
