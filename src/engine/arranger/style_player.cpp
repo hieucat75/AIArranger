@@ -165,6 +165,15 @@ void StylePlayer::setArticulationRenderer(
     renderer_ = &r;
 }
 
+void StylePlayer::setSwing(uint8_t swingPercent) noexcept {
+    if (swingPercent > music::kMaxSwing) swingPercent = music::kMaxSwing;
+    swing_percent_.store(swingPercent, std::memory_order_relaxed);
+}
+
+uint8_t StylePlayer::getSwing() const noexcept {
+    return swing_percent_.load(std::memory_order_relaxed);
+}
+
 namespace {
 // Realtime-safe sink: forwards rendered events straight to the scheduler.
 // Stack-constructed per dispatch pass (tiny, no heap).
@@ -187,6 +196,7 @@ void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
     if (rel < 0 || rel <= section_rel_cursor_) return;
 
     SchedulerSink sink(scheduler_);
+    const uint8_t swing = swing_percent_.load(std::memory_order_relaxed);
 
     for (const auto& track : section.tracks) {
         for (const auto& event : track.events) {
@@ -198,8 +208,15 @@ void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
                 dispatched.type == uasf::MidiEventType::NoteOff) {
                 dispatched.data1 = transposeNote(dispatched.data1, chord, track.role);
             }
-            // Absolute tick = section origin + event's in-section position.
-            dispatched.tick = section_origin_tick_ + et;
+            // Absolute tick = section origin + event's in-section position,
+            // with swing applied so off-beat notes slide toward a shuffle feel
+            // (Task B). NoteOn/NoteOff in the same off-beat half shift equally,
+            // so pairs stay balanced. ticks-per-beat = section resolution.
+            uint64_t absTick = static_cast<uint64_t>(section_origin_tick_ + et);
+            if (swing > music::kStraightSwing) {
+                absTick = music::applySwing(absTick, section.resolution, swing);
+            }
+            dispatched.tick = absTick;
 
             // Track active notes so section switch / stop / chord change can
             // flush them and keep on/off balanced. Dedupe against the active
