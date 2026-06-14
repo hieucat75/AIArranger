@@ -54,13 +54,30 @@ public:
 // (NoteOff, CC, …) pass through unchanged.
 class KeyswitchRenderer final : public IArticulationRenderer {
 public:
+    // `keyswitchAvailable` is decided at setup time (non-realtime) from the
+    // playback target's capabilities. When the target cannot honour keyswitch
+    // articulation (e.g. a MegaVoice style routed to a device with no keyswitch
+    // support), construct with `false` to gracefully degrade to pass-through —
+    // the note still sounds, just without the articulation select. Per the
+    // no-silent-fallback rule, the CALLER logs that degradation at construction
+    // time; render() stays allocation/lock/syscall-free for the audio path.
+    explicit KeyswitchRenderer(bool keyswitchAvailable = true) noexcept
+        : keyswitch_available_(keyswitchAvailable) {}
+
     void render(const uasf::MidiEvent& ev,
                 const uasf::ArticulationMetadata& art,
                 EventSink& out) const noexcept override;
-    const char* name() const noexcept override { return "keyswitch"; }
+    const char* name() const noexcept override {
+        return keyswitch_available_ ? "keyswitch" : "keyswitch-fallback";
+    }
+
+    bool keyswitchAvailable() const noexcept { return keyswitch_available_; }
 
     // Velocity used for the (inaudible) keyswitch trigger note.
     static constexpr uint8_t kKeyswitchVelocity = 1;
+
+private:
+    bool keyswitch_available_;
 };
 
 // Shared default instance for the dispatcher's backward-compatible default.

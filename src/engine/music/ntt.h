@@ -42,6 +42,7 @@ enum class NttMode : uint8_t {
     Melody,         // chord tone -> chord tone; scale tone kept; else nearest
     Chord,          // force every note onto a target chord tone
     Bass,           // bass-optimised: root->root, fifth->fifth, snap to chord
+    Guitar,         // SFF2 guitar comping: voice onto target chord tones
     MelodicMinor,
     HarmonicMinor,
     NaturalMinor,
