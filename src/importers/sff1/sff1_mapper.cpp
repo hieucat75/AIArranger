@@ -1,6 +1,8 @@
 #include "importers/sff1/sff1_mapper.h"
 #include <algorithm>
 #include <cctype>
+#include <map>
+#include <set>
 
 namespace ai_arranger::importers::sff1 {
 
@@ -27,6 +29,39 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
         if (s.resolution > 0) { style.resolution = s.resolution; break; }
     }
 
+    // ── Source-channel → CASM config map (Task A: per-role splitting) ──
+    // The SFF1 reader collapses the whole style into a single mixed-channel
+    // SMF MTrk (one `Phrase1` track). Each MIDI event still carries its
+    // source channel, and each CASM Ctb2 entry maps a source channel to a
+    // named role (Rhythm1/Bass/Chord1/…). We rebuild per-role UASF tracks by
+    // bucketing events by channel and resolving the role from CASM — NOT from
+    // a channel heuristic, because drums are not always on GM channel 9
+    // (e.g. POP_ACOUSTIC_2 puts Rhythm1 on channel 8). Splitting keeps the
+    // per-channel NoteOn-dedupe from collapsing unrelated tracks and stops
+    // drums from being chord-transposed, recovering retriggers dropped when
+    // everything shared one track (PR #7 known limitation).
+    std::map<uint8_t, const CasmTrackConfig*> chanConfig;
+    for (const auto& cfg : parseResult.casm_configs) {
+        // Defensive (Task D): a Ctb2 source-channel byte must be a valid MIDI
+        // channel (0-15). A corrupt/abnormal config byte can hold anything; it
+        // can never bind to a real event channel, so drop it with a warning
+        // rather than letting it shadow a valid config or wrap silently.
+        if (cfg.source_channel > 15) {
+            result.warnings.push_back(
+                "CASM track '" + cfg.name + "' has out-of-range source channel " +
+                std::to_string(static_cast<int>(cfg.source_channel)) +
+                " — ignored (expected 0-15)");
+            continue;
+        }
+        // First config for a channel wins — keeps the role stable across the
+        // section variants that repeat the same source channel.
+        chanConfig.emplace(cfg.source_channel, &cfg);
+    }
+
+    // Track channels we have already warned about so the fallback message is
+    // emitted once per channel, not once per section.
+    std::set<uint8_t> fallbackWarned;
+
     for (const auto& sffSection : parseResult.sections) {
         uasf::SectionDefinition section;
         section.type = mapSectionType(sffSection.type);
@@ -36,27 +71,53 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
         section.beats_per_bar = 4;
         section.beat_note = 4;
 
+        // Bucket events by MIDI channel, building one UASF track per channel.
+        std::map<uint8_t, uasf::TrackDefinition> byChannel;
         for (const auto& sffTrack : sffSection.tracks) {
-            uasf::TrackDefinition track;
-            track.name = "Track " + std::to_string(static_cast<int>(track.role));
-            track.midi_channel = sffTrack.midi_channel;
-            track.role = mapTrackRole(sffTrack.role);
-            track.is_drum = (sffTrack.role == SffTrackRole::Rhythm1 ||
-                            sffTrack.role == SffTrackRole::Rhythm2);
-
-            // Articulation metadata (ADR-013)
-            track.articulation.profile = uasf::ArticulationProfile::Generic;
-            track.articulation.fidelity = uasf::FidelityRequirement::High;
-            if (track.role == uasf::TrackRole::Bass ||
-                track.role == uasf::TrackRole::Percussion) {
-                track.articulation.fidelity = uasf::FidelityRequirement::Medium;
-            }
-
-            // Map MIDI events
             for (const auto& sffEv : sffTrack.events) {
-                track.events.push_back(mapMidiEvent(sffEv));
-            }
+                const uint8_t ch = sffEv.status & 0x0F;
+                auto it = byChannel.find(ch);
+                if (it == byChannel.end()) {
+                    uasf::TrackDefinition track;
+                    track.midi_channel = ch;
+                    track.articulation.profile = uasf::ArticulationProfile::Generic;
+                    track.articulation.fidelity = uasf::FidelityRequirement::High;
 
+                    auto cit = chanConfig.find(ch);
+                    if (cit != chanConfig.end()) {
+                        const CasmTrackConfig& cfg = *cit->second;
+                        track.name = cfg.name;
+                        track.role = mapCasmTrackRole(cfg);
+                        track.articulation.ntr = cfg.ntr;
+                        track.articulation.ntt = cfg.ntt;
+                    } else {
+                        // No CASM metadata for this channel: fall back to the
+                        // GM drum convention, else treat as a melodic phrase.
+                        track.name = "Channel " + std::to_string(static_cast<int>(ch));
+                        track.role = (ch == 9) ? uasf::TrackRole::Drum
+                                               : uasf::TrackRole::Phrase1;
+                        if (fallbackWarned.insert(ch).second) {
+                            result.warnings.push_back(
+                                "Channel " + std::to_string(static_cast<int>(ch)) +
+                                " has events but no CASM metadata — using " +
+                                (ch == 9 ? "drum" : "melodic") + " fallback role");
+                        }
+                    }
+                    track.is_drum = (track.role == uasf::TrackRole::Drum ||
+                                     track.role == uasf::TrackRole::Percussion);
+                    if (track.role == uasf::TrackRole::Bass ||
+                        track.role == uasf::TrackRole::Percussion) {
+                        track.articulation.fidelity =
+                            uasf::FidelityRequirement::Medium;
+                    }
+                    it = byChannel.emplace(ch, std::move(track)).first;
+                }
+                it->second.events.push_back(mapMidiEvent(sffEv));
+            }
+        }
+
+        // std::map iterates in ascending channel order → deterministic output.
+        for (auto& [ch, track] : byChannel) {
             section.tracks.push_back(std::move(track));
         }
 

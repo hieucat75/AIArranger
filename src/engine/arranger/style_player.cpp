@@ -1,4 +1,5 @@
 #include "engine/arranger/style_player.h"
+#include "engine/music/ntt.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -159,6 +160,23 @@ void StylePlayer::setEventCallback(PlaybackEventCallback cb) noexcept {
     event_cb_ = std::move(cb);
 }
 
+void StylePlayer::setArticulationRenderer(
+        const articulation::IArticulationRenderer& r) noexcept {
+    renderer_ = &r;
+}
+
+namespace {
+// Realtime-safe sink: forwards rendered events straight to the scheduler.
+// Stack-constructed per dispatch pass (tiny, no heap).
+struct SchedulerSink final : articulation::EventSink {
+    midi::MidiScheduler& scheduler;
+    explicit SchedulerSink(midi::MidiScheduler& s) noexcept : scheduler(s) {}
+    void emit(const uasf::MidiEvent& ev) noexcept override {
+        scheduler.scheduleEvent(ev);
+    }
+};
+} // namespace
+
 void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
                                           int64_t currentTick,
                                           Chord chord) noexcept {
@@ -167,6 +185,8 @@ void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
     // time advances, so NoteOn/NoteOff pairs stay balanced (no stuck notes).
     const int64_t rel = currentTick - section_origin_tick_;
     if (rel < 0 || rel <= section_rel_cursor_) return;
+
+    SchedulerSink sink(scheduler_);
 
     for (const auto& track : section.tracks) {
         for (const auto& event : track.events) {
@@ -203,7 +223,11 @@ void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
                 panic_handler_.noteOff(dispatched.channel, dispatched.data1);
             }
 
-            scheduler_.scheduleEvent(dispatched);
+            // Route through the articulation render strategy (Task C). The
+            // default naive renderer emits exactly this one event, preserving
+            // the previous behaviour; a keyswitch renderer may inject the
+            // articulation-select note ahead of the main note.
+            renderer_->render(dispatched, track.articulation, sink);
         }
     }
 
@@ -211,35 +235,17 @@ void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
 }
 
 uint8_t StylePlayer::transposeNote(uint8_t note, Chord chord, uasf::TrackRole role) const noexcept {
-    // Drum tracks are not transposed
-    if (role == uasf::TrackRole::Drum || role == uasf::TrackRole::Percussion) {
-        return note;
-    }
-
+    // Full NTR/NTT transposition (Gate 10 Task B). The crude root/fifth rule is
+    // replaced by the table-driven transform in engine/music/ntt. The rule pair
+    // is derived from the track role, which round-trips through the UASF format
+    // (the raw CASM NTR/NTT integers do not), so the transform stays correct for
+    // a deserialised style. Drums map to Bypass and are left untouched.
+    music::NtrRule ntr;
+    music::NttMode ntt;
+    music::defaultRuleForRole(role, ntr, ntt);
+    if (ntr == music::NtrRule::Bypass || ntt == music::NttMode::Bypass) return note;
     if (chord.type == ChordType::NoChord) return note;
-
-    // NTR-based transposition (from CASM / UASF articulation metadata)
-    uint8_t root = chord.root;
-    int16_t result = static_cast<int16_t>(note);
-
-    switch (chord.type) {
-        case ChordType::Major:
-            // chord tones are at root, root+4, root+7
-            result = root + ((note % 12) % 7 >= 4 ? 7 : 4);
-            break;
-        case ChordType::Minor:
-            result = root + ((note % 12) % 7 >= 4 ? 7 : 3);
-            break;
-        default:
-            // Default: shift by chord root offset from C (60)
-            result = static_cast<int16_t>(note) + (static_cast<int16_t>(root) - 60);
-            break;
-    }
-
-    // Clamp
-    if (result < 0) result = 0;
-    if (result > 127) result = 127;
-    return static_cast<uint8_t>(result);
+    return music::transpose(note, chord, ntr, ntt);
 }
 
 // ── Demo style builder ─────────────────────────────────────────────
