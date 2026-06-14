@@ -21,6 +21,7 @@ file(GLOB_RECURSE ENGINE_SRC
     src/engine/performance/*.cpp
     src/engine/control/*.cpp
     src/engine/chord/*.cpp
+    src/engine/integration/*.cpp
 )
 
 add_library(arranger-engine STATIC ${ENGINE_SRC})

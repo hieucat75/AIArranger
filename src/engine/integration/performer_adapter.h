@@ -1,0 +1,91 @@
+#ifndef AI_ARRANGER_INTEGRATION_PERFORMER_ADAPTER_H
+#define AI_ARRANGER_INTEGRATION_PERFORMER_ADAPTER_H
+
+#include "engine/realtime/clock.h"
+#include "engine/arranger/style_player.h"
+#include "engine/control/control_surface.h"
+#include "engine/control/control_events.h"
+#include "engine/performance/sync_controller.h"
+#include "engine/performance/fill_scheduler.h"
+#include "engine/performance/variation_manager.h"
+#include "engine/performance/split_router.h"
+#include "engine/performance/realtime_state_machine.h"
+#include "engine/chord/chord_scan_mode.h"
+#include <cstdint>
+
+// ── Performer integration adapter (Gate 13) ──────────────────────────
+//
+// Bridges the Gate 12 performer modules to the real StylePlayer playback path.
+// Stateless translator: it OWNS the performer modules (control intent) but holds
+// NO playback state — StylePlayer + SectionSequencer remain the playback/bar
+// authority. The adapter forwards collapsed intent to existing StylePlayer hooks
+// (which bar-quantize via the sequencer); it never bypasses the scheduler and
+// makes no engine-core behaviour change. Lock-free: control events arrive via a
+// SPSC queue drained inside tick().
+
+namespace ai_arranger::integration {
+
+class PerformerAdapter {
+public:
+    PerformerAdapter(realtime::RealtimeClock& clock,
+                     arranger::StylePlayer& player) noexcept;
+
+    // ── Producer side (control thread / front-end) ─────────────────
+    // Post a control event (lock-free). Returns false if the queue is full.
+    bool postEvent(const control::ControlEvent& ev) noexcept;
+
+    // Map Variation A/B/C/D to section indices in the loaded style.
+    void setVariationSections(int a, int b, int c, int d) noexcept;
+
+    // Select the active chord-scan mode (caller owns the instance).
+    void setChordScanMode(const chord::IChordScanMode* mode) noexcept { scan_ = mode; }
+    void setSplitPoint(uint8_t note) noexcept { split_.setSplitPoint(note); }
+    void setManualBass(bool on) noexcept { split_.setManualBass(on); }
+
+    // Held-note input (lower zone feeds chord detection; upper zone ignored for
+    // chord). Re-runs detection and pushes the chord to StylePlayer.
+    void noteOn(uint8_t note) noexcept;
+    void noteOff(uint8_t note) noexcept;
+
+    // ── Realtime tick: drain control events, drive the player ──────
+    void tick() noexcept;
+
+    // ── Observability (testing) ────────────────────────────────────
+    performance::PerformerState state() const noexcept { return sm_.state(); }
+    bool isPlaying() const noexcept { return player_.isPlaying(); }
+    performance::SyncController&  sync() noexcept { return sync_; }
+    performance::FillScheduler&   fill() noexcept { return fill_; }
+    performance::VariationManager& variation() noexcept { return var_; }
+    performance::SplitRouter&     split() noexcept { return split_; }
+    arranger::Chord lastChord() const noexcept { return last_chord_; }
+
+private:
+    void handleControl(const control::ControlEvent& ev) noexcept;
+    void startPlayback() noexcept;
+    void doPanic() noexcept;
+    void redetectChord() noexcept;
+
+    realtime::RealtimeClock& clock_;
+    arranger::StylePlayer&   player_;
+
+    control::ControlEventQueue<256> queue_;
+    performance::SyncController     sync_;
+    performance::FillScheduler      fill_;
+    performance::VariationManager   var_;
+    performance::SplitRouter        split_;
+    performance::RealtimeStateMachine sm_;
+
+    const chord::IChordScanMode* scan_{nullptr};
+    arranger::Chord last_chord_{arranger::ChordType::NoChord, 0, 0, 0};
+
+    int  var_section_[4]{0, 1, 2, 3};
+
+    // Held lower-zone notes (sorted ascending), fixed buffer (RT-safe).
+    static constexpr int kMaxHeld = 16;
+    uint8_t held_[kMaxHeld]{};
+    int     held_count_{0};
+};
+
+} // namespace ai_arranger::integration
+
+#endif // AI_ARRANGER_INTEGRATION_PERFORMER_ADAPTER_H
