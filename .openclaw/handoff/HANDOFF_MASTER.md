@@ -4,6 +4,54 @@
 
 ---
 
+## Hardware Review Status
+
+**HARDWARE_REVIEW_STATUS: DEFERRED_BY_PTH** (as of 2026-06-14)
+
+- Manual Yamaha/Korg validation explicitly deferred by PTH.
+- Hardware checklist + NTT calibration docs PRESERVED for future milestone
+  (`docs/gate-plans/GATE_10B_HARDWARE_CHECKLIST.md`,
+  `docs/gate-plans/GATE_10B_NTT_CALIBRATION.md`).
+- Yamaha/Korg full validation tracked as: **Future Milestone — Hardware Parity
+  Validation** (no claim of compatibility yet).
+- Engine slice (Gate 10A + Gate 10B Engine) MERGED to main and CI-green;
+  hardware parity NOT claimed.
+
+## Strategic Direction (2026-06-14)
+
+> Full strategy: `docs/strategy/KORG_FIRST_VALIDATION_STRATEGY.md`.
+
+- **Project direction:** "Generic Yamaha-compatible arranger engine" →
+  **"Modern realtime arranger platform with a KORG-first validation strategy"**
+  (vendor-agnostic runtime; Yamaha import is a feature, not the identity).
+- **Primary hardware target:** **Korg PA700, Korg PA1000** (NOT Yamaha
+  Genos/Tyros).
+- **NOT recommended initially:** Yamaha Genos, Yamaha Tyros, Korg PA5X, and other
+  flagship-tier devices (cost / scarcity / over-spec for first validation).
+- **Next pre-hardware infrastructure:** `tools/korg_validation/` harness —
+  MIDI capture, timing differential, section transitions, fill timing, chord
+  latency, panic/stuck-note, jitter, and a parity harness. Build **before**
+  acquiring hardware. (Future phase — not implemented yet.)
+- **Long-term positioning:** a software-defined arranger instrument platform.
+- Hardware validation remains **DEFERRED_BY_PTH**; no compatibility claimed.
+
+## Release Notes Policy
+
+> Full policy: `docs/policy/CLAIMS_AND_RELEASE_NOTES_POLICY.md`.
+
+Every future release note, tag annotation, PR description, and README/docs
+reference to Yamaha/Korg MUST include:
+
+1. **Explicit statement: "Hardware validation pending"** in release notes for any
+   tag that includes Yamaha/Korg-related code.
+2. **No marketing/demo claim of "compatible with Yamaha/Korg"** unless
+   real-device validation evidence (recorded scorecard + NTT A/B calibration
+   data) is committed to the repo.
+3. Allowed phrasing: "Engine-side Yamaha SFF/CASM importer (hardware parity
+   unverified)" or "Supports Yamaha SFF1 parsing (no compatibility claim)".
+
+---
+
 ## 1. PROJECT SNAPSHOT
 
 ### Gates Completed

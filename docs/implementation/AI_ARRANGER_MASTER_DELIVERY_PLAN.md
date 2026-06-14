@@ -483,7 +483,7 @@ The product's durable competitive advantage is:
 
 **Deliverables:**
 - D-WS03-01: MusicalClock implementation (integrated with WS-02 audio callback)
-- D-WS03-02: SectionStateMachine with all Yamaha-compatible quantized switching
+- D-WS03-02: SectionStateMachine with arranger-standard quantized switching (KORG-first validation target; hardware parity unverified — see `docs/strategy/KORG_FIRST_VALIDATION_STRATEGY.md`)
 - D-WS03-03: Chord transformation pipeline (NTR + NTT + NoteLimit)
 - D-WS03-04: Retrigger engine (6 policies)
 - D-WS03-05: Render loop (event iteration + clock out + state publish + articulation-aware scheduling)
