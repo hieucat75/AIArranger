@@ -343,8 +343,12 @@ bool Sff1Reader::ensure(size_t bytes) noexcept {
 bool Sff1Reader::parseMThd(const SffChunk& chunk) noexcept {
     if (chunk.data.size() < 6) return false;
 
-    uint16_t division = static_cast<uint16_t>(chunk.data[4]) |
-                        (static_cast<uint16_t>(chunk.data[5]) << 8);
+    // MThd division is big-endian per the Standard MIDI File spec
+    // (bytes [4]=hi, [5]=lo). Reading it little-endian corrupts the PPQN
+    // (e.g. 0x0780=1920 became 0x8007 -> SMPTE bit set -> 7), which made the
+    // playback clock run the events at the wrong tempo (effectively silent).
+    uint16_t division = (static_cast<uint16_t>(chunk.data[4]) << 8) |
+                        static_cast<uint16_t>(chunk.data[5]);
 
     SffSection section;
     section.type = SffSectionType::Main1;
