@@ -1,0 +1,15 @@
+# Synthetic REFERENCE capture, pairs with two_bar_engine.csv.
+# Identical timing (a perfect reference) — analyzers should report zero delta.
+ppqn=480
+0,0x90,36,100
+0,0x99,36,100
+240,0x80,36,0
+240,0x89,36,0
+480,0x90,43,90
+720,0x80,43,0
+960,0x99,38,90
+1080,0x89,38,0
+1920,0x90,36,100
+2160,0x80,36,0
+2400,0x90,43,90
+2640,0x80,43,0

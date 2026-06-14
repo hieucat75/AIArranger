@@ -21,6 +21,7 @@ foreach(test_file ${KORG_VALIDATION_TEST_SRC})
     add_executable(${test_name} ${test_file})
     target_link_libraries(${test_name} korg-validation arranger-engine Threads::Threads)
     target_compile_definitions(${test_name} PRIVATE
-        KORG_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+        KORG_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+        KORG_REPO_DIR="${CMAKE_SOURCE_DIR}")
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
