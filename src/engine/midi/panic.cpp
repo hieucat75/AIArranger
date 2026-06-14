@@ -74,8 +74,45 @@ void PanicHandler::panic(MidiScheduler& scheduler, MidiEventCallback sendCallbac
     active_note_count_.store(0, std::memory_order_release);
 }
 
+void PanicHandler::flushActiveNotes(MidiEventCallback sendCallback) noexcept {
+    if (!sendCallback) return;
+
+    uasf::MidiEvent noteOff{};
+    noteOff.type = uasf::MidiEventType::NoteOff;
+    noteOff.data2 = 0;
+    noteOff.tick = 0;
+
+    for (uint8_t ch = 0; ch <= kMaxChannel; ++ch) {
+        uint64_t low = channel_notes_low_[ch].exchange(0, std::memory_order_acq_rel);
+        while (low) {
+            uint8_t bit = static_cast<uint8_t>(__builtin_ctzll(low));
+            low &= (low - 1);
+            noteOff.channel = ch;
+            noteOff.data1 = bit;
+            sendCallback(noteOff);
+        }
+        uint64_t high = channel_notes_high_[ch].exchange(0, std::memory_order_acq_rel);
+        while (high) {
+            uint8_t bit = static_cast<uint8_t>(__builtin_ctzll(high));
+            high &= (high - 1);
+            noteOff.channel = ch;
+            noteOff.data1 = static_cast<uint8_t>(bit + 64);
+            sendCallback(noteOff);
+        }
+    }
+    active_note_count_.store(0, std::memory_order_release);
+}
+
 bool PanicHandler::hasActiveNotes() const noexcept {
     return active_note_count_.load(std::memory_order_acquire) > 0;
+}
+
+bool PanicHandler::isNoteActive(uint8_t channel, uint8_t note) const noexcept {
+    if (channel > kMaxChannel || note > 127) return false;
+    if (note < 64) {
+        return (channel_notes_low_[channel].load(std::memory_order_acquire) >> note) & 1ULL;
+    }
+    return (channel_notes_high_[channel].load(std::memory_order_acquire) >> (note - 64)) & 1ULL;
 }
 
 } // namespace ai_arranger::midi

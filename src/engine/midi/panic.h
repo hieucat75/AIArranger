@@ -39,8 +39,18 @@ public:
     // Execute panic: clear queue + send all-notes-off to callback
     void panic(MidiScheduler& scheduler, MidiEventCallback sendCallback) noexcept;
 
+    // Emit an explicit NoteOff (velocity 0) for every currently-active note
+    // via the callback, then clear tracking. Unlike panic(), this does NOT
+    // touch the scheduler queue and produces per-note events (so a NoteBalance
+    // observer sees balanced on/off pairs). Used on section switch / stop to
+    // avoid stuck notes. Real-time safe: bounded loop, no malloc/mutex.
+    void flushActiveNotes(MidiEventCallback sendCallback) noexcept;
+
     // Check if any notes are still active
     [[nodiscard]] bool hasActiveNotes() const noexcept;
+
+    // Check whether a specific (channel,note) is currently tracked as active.
+    [[nodiscard]] bool isNoteActive(uint8_t channel, uint8_t note) const noexcept;
 
 private:
     // Active note tracking: bit per channel (128 notes max per channel)

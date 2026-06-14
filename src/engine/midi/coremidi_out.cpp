@@ -1,0 +1,283 @@
+#include "engine/midi/coremidi_out.h"
+
+#include <chrono>
+#include <mutex>
+
+// MIDIPacketList / MIDIPacketListAdd are deprecated in favour of the newer
+// MIDIEventList API, but remain fully functional and are simpler for a
+// single-endpoint output path. Silence the deprecation noise locally.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
+namespace ai_arranger::midi {
+
+// ── Pure conversion (no CoreMIDI) ────────────────────────────────────
+
+size_t midiEventToBytes(const uasf::MidiEvent& ev, uint8_t* out) noexcept {
+    const uint8_t status = static_cast<uint8_t>(ev.type) | (ev.channel & 0x0F);
+    switch (ev.type) {
+        case uasf::MidiEventType::NoteOff:
+        case uasf::MidiEventType::NoteOn:
+        case uasf::MidiEventType::PolyPressure:
+        case uasf::MidiEventType::ControlChange:
+        case uasf::MidiEventType::PitchBend:
+            out[0] = status;
+            out[1] = ev.data1 & 0x7F;
+            out[2] = ev.data2 & 0x7F;
+            return 3;
+        case uasf::MidiEventType::ProgramChange:
+        case uasf::MidiEventType::ChannelPressure:
+            out[0] = status;
+            out[1] = ev.data1 & 0x7F;
+            return 2;
+        default:
+            return 0;
+    }
+}
+
+// ── Name resolution helpers (control / dispatch threads only) ────────
+
+namespace {
+
+std::mutex& nameMutex() {
+    static std::mutex m;
+    return m;
+}
+
+std::string endpointDisplayName(MIDIEndpointRef ep) {
+    if (ep == 0) return {};
+    CFStringRef cf = nullptr;
+    if (MIDIObjectGetStringProperty(ep, kMIDIPropertyDisplayName, &cf) != noErr || !cf) {
+        return {};
+    }
+    char buf[256] = {0};
+    CFStringGetCString(cf, buf, sizeof(buf), kCFStringEncodingUTF8);
+    CFRelease(cf);
+    return std::string(buf);
+}
+
+} // namespace
+
+// ── Lifecycle ────────────────────────────────────────────────────────
+
+CoreMidiOut::~CoreMidiOut() {
+    shutdown();
+}
+
+bool CoreMidiOut::initialize(const char* clientName) noexcept {
+    if (initialized_.load(std::memory_order_acquire)) return true;
+
+    CFStringRef cfClient = CFStringCreateWithCString(
+        kCFAllocatorDefault, clientName ? clientName : "AI Arranger", kCFStringEncodingUTF8);
+    OSStatus st = MIDIClientCreate(cfClient, &CoreMidiOut::notifyProc, this, &client_);
+    if (cfClient) CFRelease(cfClient);
+    if (st != noErr) {
+        return false; // hard CoreMIDI failure
+    }
+
+    CFStringRef cfPort = CFStringCreateWithCString(
+        kCFAllocatorDefault, "out", kCFStringEncodingUTF8);
+    st = MIDIOutputPortCreate(client_, cfPort, &out_port_);
+    if (cfPort) CFRelease(cfPort);
+    if (st != noErr) {
+        MIDIClientDispose(client_);
+        client_ = 0;
+        return false;
+    }
+
+    // Auto-select the first destination if one exists (headless CI → none).
+    if (destinationCount() > 0) {
+        selectDestination(0);
+    }
+
+    running_.store(true, std::memory_order_release);
+    dispatch_thread_ = std::thread([this]{ dispatchLoop(); });
+    initialized_.store(true, std::memory_order_release);
+    return true;
+}
+
+void CoreMidiOut::shutdown() noexcept {
+    if (!initialized_.load(std::memory_order_acquire) &&
+        !running_.load(std::memory_order_acquire)) {
+        return;
+    }
+    running_.store(false, std::memory_order_release);
+    if (dispatch_thread_.joinable()) dispatch_thread_.join();
+
+    if (out_port_) { MIDIPortDispose(out_port_); out_port_ = 0; }
+    if (client_)   { MIDIClientDispose(client_);  client_ = 0; }
+    endpoint_.store(0, std::memory_order_release);
+    initialized_.store(false, std::memory_order_release);
+}
+
+bool CoreMidiOut::isInitialized() const noexcept {
+    return initialized_.load(std::memory_order_acquire);
+}
+
+// ── Destination management ───────────────────────────────────────────
+
+int CoreMidiOut::destinationCount() const noexcept {
+    return static_cast<int>(MIDIGetNumberOfDestinations());
+}
+
+std::vector<MidiDestinationInfo> CoreMidiOut::enumerateDestinations() const noexcept {
+    std::vector<MidiDestinationInfo> out;
+    ItemCount n = MIDIGetNumberOfDestinations();
+    out.reserve(n);
+    for (ItemCount i = 0; i < n; ++i) {
+        MIDIEndpointRef ep = MIDIGetDestination(i);
+        out.push_back({static_cast<int>(i), endpointDisplayName(ep)});
+    }
+    return out;
+}
+
+bool CoreMidiOut::selectDestination(int index) noexcept {
+    if (index < 0) {
+        {
+            std::lock_guard<std::mutex> lk(nameMutex());
+            selected_name_.clear();
+        }
+        selected_index_.store(-1, std::memory_order_release);
+        endpoint_.store(0, std::memory_order_release);
+        return true;
+    }
+    ItemCount n = MIDIGetNumberOfDestinations();
+    if (static_cast<ItemCount>(index) >= n) return false;
+
+    MIDIEndpointRef ep = MIDIGetDestination(static_cast<ItemCount>(index));
+    std::string name = endpointDisplayName(ep);
+    {
+        std::lock_guard<std::mutex> lk(nameMutex());
+        selected_name_ = name;
+    }
+    selected_index_.store(index, std::memory_order_release);
+    endpoint_.store(ep, std::memory_order_release);
+    return true;
+}
+
+int CoreMidiOut::selectedDestination() const noexcept {
+    return selected_index_.load(std::memory_order_acquire);
+}
+
+bool CoreMidiOut::hasLiveDestination() const noexcept {
+    return endpoint_.load(std::memory_order_acquire) != 0;
+}
+
+// ── Realtime-safe send ───────────────────────────────────────────────
+
+bool CoreMidiOut::send(const uasf::MidiEvent& ev) noexcept {
+    if (!queue_.push(ev)) {
+        dropped_count_.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+    return true;
+}
+
+// ── Diagnostics ──────────────────────────────────────────────────────
+
+void CoreMidiOut::setDispatchTap(DispatchTap tap) noexcept {
+    dispatch_tap_ = std::move(tap);
+}
+
+uint64_t CoreMidiOut::sentCount() const noexcept { return sent_count_.load(std::memory_order_acquire); }
+uint64_t CoreMidiOut::dispatchedCount() const noexcept { return dispatched_count_.load(std::memory_order_acquire); }
+uint64_t CoreMidiOut::droppedCount() const noexcept { return dropped_count_.load(std::memory_order_acquire); }
+uint64_t CoreMidiOut::reconnectCount() const noexcept { return reconnect_count_.load(std::memory_order_acquire); }
+
+// ── Hotplug re-resolution (dispatch / control thread) ────────────────
+
+void CoreMidiOut::resolveEndpointByName() noexcept {
+    int idx = selected_index_.load(std::memory_order_acquire);
+    if (idx < 0) {
+        endpoint_.store(0, std::memory_order_release);
+        return;
+    }
+    std::string want;
+    {
+        std::lock_guard<std::mutex> lk(nameMutex());
+        want = selected_name_;
+    }
+
+    MIDIEndpointRef found = 0;
+    ItemCount n = MIDIGetNumberOfDestinations();
+    for (ItemCount i = 0; i < n; ++i) {
+        MIDIEndpointRef ep = MIDIGetDestination(i);
+        if (!want.empty() && endpointDisplayName(ep) == want) {
+            found = ep;
+            selected_index_.store(static_cast<int>(i), std::memory_order_release);
+            break;
+        }
+    }
+
+    MIDIEndpointRef prev = endpoint_.load(std::memory_order_acquire);
+    endpoint_.store(found, std::memory_order_release);
+    if (found != 0 && prev == 0) {
+        reconnect_count_.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
+void CoreMidiOut::notifyProc(const MIDINotification* msg, void* refCon) {
+    auto* self = static_cast<CoreMidiOut*>(refCon);
+    if (!self || !msg) return;
+    if (msg->messageID == kMIDIMsgSetupChanged ||
+        msg->messageID == kMIDIMsgObjectAdded ||
+        msg->messageID == kMIDIMsgObjectRemoved) {
+        self->needs_reresolve_.store(true, std::memory_order_release);
+    }
+}
+
+// ── Consumer thread ──────────────────────────────────────────────────
+
+void CoreMidiOut::dispatchLoop() noexcept {
+    using namespace std::chrono;
+    constexpr auto kIdleSleep = microseconds(250);
+    // ~100ms periodic reconnect probe when a device is selected but absent.
+    constexpr int kProbeEvery = 400;
+    int idleTicks = 0;
+
+    uint8_t listBuf[256];
+
+    while (running_.load(std::memory_order_acquire)) {
+        // Hotplug: explicit notification, or periodic probe when disconnected.
+        bool wantResolve = needs_reresolve_.exchange(false, std::memory_order_acq_rel);
+        if (!wantResolve && selected_index_.load(std::memory_order_acquire) >= 0 &&
+            endpoint_.load(std::memory_order_acquire) == 0) {
+            if (++idleTicks >= kProbeEvery) { wantResolve = true; idleTicks = 0; }
+        }
+        if (wantResolve) resolveEndpointByName();
+
+        uasf::MidiEvent ev;
+        bool any = false;
+        while (queue_.pop(ev)) {
+            any = true;
+            dispatched_count_.fetch_add(1, std::memory_order_relaxed);
+
+            if (dispatch_tap_) dispatch_tap_(ev);
+
+            MIDIEndpointRef ep = endpoint_.load(std::memory_order_acquire);
+            if (ep == 0) {
+                // Graceful no-op: nowhere to send (headless / disconnected).
+                dropped_count_.fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
+
+            uint8_t bytes[3];
+            size_t nbytes = midiEventToBytes(ev, bytes);
+            if (nbytes == 0) continue;
+
+            MIDIPacketList* pktList = reinterpret_cast<MIDIPacketList*>(listBuf);
+            MIDIPacket* pkt = MIDIPacketListInit(pktList);
+            pkt = MIDIPacketListAdd(pktList, sizeof(listBuf), pkt,
+                                    /*timestamp=*/0, nbytes, bytes);
+            if (pkt && MIDISend(out_port_, ep, pktList) == noErr) {
+                sent_count_.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+
+        if (!any) std::this_thread::sleep_for(kIdleSleep);
+    }
+}
+
+} // namespace ai_arranger::midi
+
+#pragma clang diagnostic pop

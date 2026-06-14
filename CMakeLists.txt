@@ -7,6 +7,8 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 find_library(COREAUDIO CoreAudio)
 find_library(AUDIOUNIT AudioUnit)
+find_library(COREMIDI CoreMIDI)
+find_library(COREFOUNDATION CoreFoundation)
 
 # ── Engine library (vendor-agnostic runtime) ──────────────────────────
 file(GLOB_RECURSE ENGINE_SRC
@@ -18,7 +20,7 @@ file(GLOB_RECURSE ENGINE_SRC
 
 add_library(arranger-engine STATIC ${ENGINE_SRC})
 target_include_directories(arranger-engine PUBLIC src)
-target_link_libraries(arranger-engine ${COREAUDIO} ${AUDIOUNIT})
+target_link_libraries(arranger-engine ${COREAUDIO} ${AUDIOUNIT} ${COREMIDI} ${COREFOUNDATION})
 
 # ── Importer library (vendor SFF1/SFF2 isolation) ─────────────────────
 file(GLOB_RECURSE IMPORTER_SFF1_SRC
@@ -49,3 +51,7 @@ endforeach()
 # ── SFF1 parser CLI tool ──────────────────────────────────────────────
 add_executable(sff1-parser tools/sff1_parser_cli.cpp)
 target_link_libraries(sff1-parser importer-sff1 arranger-engine)
+
+# ── Korg playback CLI (Gate 9 manual Musical Review driver) ───────────
+add_executable(korg-playback tools/korg_playback_cli.cpp)
+target_link_libraries(korg-playback arranger-engine Threads::Threads)
