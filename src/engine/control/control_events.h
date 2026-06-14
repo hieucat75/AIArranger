@@ -19,6 +19,9 @@ enum class ControlAction : uint8_t {
     Intro, Ending,
     Tap,
     Panic,
+    // Chord intent from the UI: param = root MIDI note | (ChordType << 8).
+    // Appended (not reordered) to keep existing values stable.
+    Chord,
 };
 
 struct ControlEvent {
