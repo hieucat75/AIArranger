@@ -54,6 +54,9 @@ public:
     void panic() noexcept;
 
 private:
+    // Activate a section now (set current index, clear queue, update state).
+    void activateSection(int index) noexcept;
+
     std::atomic<SequencerState> state_{SequencerState::Stopped};
     std::atomic<int> current_section_{-1};
     std::atomic<int> queued_section_{-1};

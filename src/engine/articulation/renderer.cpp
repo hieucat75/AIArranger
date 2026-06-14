@@ -14,6 +14,13 @@ void KeyswitchRenderer::render(const uasf::MidiEvent& ev,
                                EventSink& out) const noexcept {
     const bool isNoteOn = ev.type == uasf::MidiEventType::NoteOn && ev.data2 > 0;
 
+    // MegaVoice graceful degrade: if the target can't honour keyswitch, pass
+    // the note through unchanged (the degradation was logged at construction).
+    if (!keyswitch_available_) {
+        out.emit(ev);
+        return;
+    }
+
     // Only real note-ons on keyswitch tracks get an articulation trigger.
     if (!isNoteOn || !art.has_keyswitch || art.keyswitch_note == ev.data1) {
         out.emit(ev);

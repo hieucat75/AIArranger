@@ -113,8 +113,10 @@ uint8_t transpose(uint8_t note, Chord target,
         dstRel = (dc <= ds) ? nc : ns;
     }
 
-    // Bass and Chord modes pull every note onto a target chord tone.
-    if (ntt == NttMode::Bass || ntt == NttMode::Chord) {
+    // Bass, Chord and Guitar modes pull every note onto a target chord tone
+    // (guitar comping voices the chord, like chord mode but on its own track so
+    // the SFF2 Guitar NTR can drive register/voicing separately).
+    if (ntt == NttMode::Bass || ntt == NttMode::Chord || ntt == NttMode::Guitar) {
         dstRel = nearestRepresentative(dstRel, ct);
     }
 

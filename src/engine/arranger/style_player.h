@@ -8,8 +8,10 @@
 #include "engine/arranger/chord_input.h"
 #include "engine/arranger/section_sequencer.h"
 #include "engine/articulation/renderer.h"
+#include "engine/music/groove.h"
 #include <vector>
 #include <functional>
+#include <atomic>
 
 namespace ai_arranger::arranger {
 
@@ -70,6 +72,12 @@ public:
     // caller owns the renderer's lifetime; pass a long-lived instance.
     void setArticulationRenderer(const articulation::IArticulationRenderer& r) noexcept;
 
+    // ── Swing / shuffle groove (Gate 10B Task B) ───────────────────
+    // 50 = straight (default), ~67 = triplet shuffle, 75 = hard shuffle.
+    // Realtime-safe to call while playing (atomic).
+    void setSwing(uint8_t swingPercent) noexcept;
+    uint8_t getSwing() const noexcept;
+
 private:
     realtime::RealtimeClock& clock_;
     midi::MidiScheduler&     scheduler_;
@@ -93,6 +101,9 @@ private:
     // Articulation render strategy. Backward-compatible default = pass-through.
     const articulation::IArticulationRenderer* renderer_{
         &articulation::defaultRenderer()};
+
+    // Swing percentage (50 = straight). Read on the dispatch path.
+    std::atomic<uint8_t> swing_percent_{music::kStraightSwing};
 
     // Dispatch events from the current section that are <= currentTick
     void dispatchSectionEvents(const uasf::SectionDefinition& section,

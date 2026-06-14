@@ -31,6 +31,28 @@ int main() {
     TEST("Initial state = Stopped", seq.getState() == SequencerState::Stopped);
     TEST("No section selected initially", seq.getCurrentSectionIndex() < 0);
 
+    // ── Gate 10B Task C: intro starts immediately (no 1-bar delay) ──
+    {
+        SectionSequencer iseq;
+        iseq.setSections(sections.data(), sections.size());
+        iseq.queueSection(0);
+        // At tick 0 (bar 0) with nothing playing, the queued intro must
+        // activate immediately — not wait for the first bar boundary.
+        bool started = iseq.advance(0, 1920);
+        TEST("Intro activates at tick 0 (no 1-bar delay)", started);
+        TEST("Current section = Intro at start", iseq.getCurrentSectionIndex() == 0);
+        TEST("State = PlayingIntro at start",
+             iseq.getState() == SequencerState::PlayingIntro);
+        // A subsequent change still quantises to the next bar boundary.
+        iseq.queueSection(1);
+        bool earlySwitch = iseq.advance(100, 1920); // same bar 0
+        TEST("Mid-bar section change waits for bar boundary", !earlySwitch &&
+             iseq.getCurrentSectionIndex() == 0);
+        bool barSwitch = iseq.advance(2000, 1920);   // crosses into bar 1
+        TEST("Queued change applies on next bar boundary",
+             barSwitch && iseq.getCurrentSectionIndex() == 1);
+    }
+
     // Queue section and advance past bar boundary
     seq.queueSection(0);
     TEST("Section queued", seq.isQueued());
