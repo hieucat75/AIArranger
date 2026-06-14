@@ -113,6 +113,10 @@ void PerformerAdapter::noteOff(uint8_t note) noexcept {
 void PerformerAdapter::redetectChord() noexcept {
     if (!scan_ || held_count_ == 0) return;
     arranger::Chord c = scan_->detect(held_, static_cast<size_t>(held_count_));
+    // Manual-bass override: the lowest held lower-zone note becomes the chord
+    // bass (slash). Routing only — no engine-core change.
+    const uint8_t mb = split_.manualBassNote(held_, static_cast<size_t>(held_count_));
+    if (mb != performance::kNoManualBass) c.bass = mb;
     last_chord_ = c;
     if (c.type == arranger::ChordType::NoChord) return;
 
