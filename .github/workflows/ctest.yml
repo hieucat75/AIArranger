@@ -1,0 +1,19 @@
+name: CTest
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    # macOS only: the engine links CoreMIDI / CoreAudio / AudioUnit.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Use the project's canonical test entry point so CI stays aligned with
+      # local runs (cmake configure + build -j + ctest --output-on-failure).
+      - name: Build + CTest (scripts/run_tests.sh)
+        run: bash scripts/run_tests.sh
