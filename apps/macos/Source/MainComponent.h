@@ -11,12 +11,14 @@
 #include "ui/chord_view_model.h"
 #include "ui/diagnostics_view_model.h"
 #include "ui/latency_monitor.h"
+#include "ui/midi/midi_output_viewmodel.h"
 #include "EngineDriver.h"
 #include "TransportPanel.h"
 #include "ChordPanel.h"
 #include "DiagnosticsPanel.h"
 #include "StyleBrowserPanel.h"
 #include "ConsolePanel.h"
+#include "MidiOutputPanel.h"
 
 namespace ai_arranger::app {
 
@@ -39,12 +41,14 @@ private:
     ui::ChordViewModel       chordVm_;
     ui::DiagnosticsViewModel diagVm_;
     ui::LatencyMonitor       latency_;
+    ui::MidiOutputViewModel  midiVm_;
 
     TransportPanel    transport_{transportVm_, bridge_};
     ChordPanel        chord_{chordVm_, session_};
     DiagnosticsPanel  diagnostics_{diagVm_, latency_};
     StyleBrowserPanel styles_{session_};
     ConsolePanel      console_;
+    MidiOutputPanel   midiOut_{midiVm_};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };
