@@ -150,3 +150,7 @@ assertions / 0 failures; CI green.
 > Gate 10B **engine** slice is complete, merged, and green. Gate 10B **hardware**
 > slice (checklist + calibration) is **DEFERRED_BY_PTH** — preserved as a future
 > milestone, reactivate on a physical device with no code changes.
+
+> **Strategic direction updated 2026-06-14: KORG-first validation** (Korg
+> PA700/PA1000 as the primary hardware target, not Yamaha Genos/Tyros). See
+> `docs/strategy/KORG_FIRST_VALIDATION_STRATEGY.md`.

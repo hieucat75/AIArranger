@@ -17,6 +17,24 @@
 - Engine slice (Gate 10A + Gate 10B Engine) MERGED to main and CI-green;
   hardware parity NOT claimed.
 
+## Strategic Direction (2026-06-14)
+
+> Full strategy: `docs/strategy/KORG_FIRST_VALIDATION_STRATEGY.md`.
+
+- **Project direction:** "Generic Yamaha-compatible arranger engine" →
+  **"Modern realtime arranger platform with a KORG-first validation strategy"**
+  (vendor-agnostic runtime; Yamaha import is a feature, not the identity).
+- **Primary hardware target:** **Korg PA700, Korg PA1000** (NOT Yamaha
+  Genos/Tyros).
+- **NOT recommended initially:** Yamaha Genos, Yamaha Tyros, Korg PA5X, and other
+  flagship-tier devices (cost / scarcity / over-spec for first validation).
+- **Next pre-hardware infrastructure:** `tools/korg_validation/` harness —
+  MIDI capture, timing differential, section transitions, fill timing, chord
+  latency, panic/stuck-note, jitter, and a parity harness. Build **before**
+  acquiring hardware. (Future phase — not implemented yet.)
+- **Long-term positioning:** a software-defined arranger instrument platform.
+- Hardware validation remains **DEFERRED_BY_PTH**; no compatibility claimed.
+
 ## Release Notes Policy
 
 > Full policy: `docs/policy/CLAIMS_AND_RELEASE_NOTES_POLICY.md`.
