@@ -22,6 +22,10 @@ file(GLOB_RECURSE ENGINE_SRC
     src/engine/control/*.cpp
     src/engine/chord/*.cpp
     src/engine/integration/*.cpp
+    src/session/*.cpp
+    src/control/*.cpp
+    src/ui/*.cpp
+    src/midi/*.cpp
 )
 
 add_library(arranger-engine STATIC ${ENGINE_SRC})
@@ -65,6 +69,15 @@ foreach(test_file ${REALTIME_TEST_SRC})
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
 
+# ── Gate 14 headless app-shell tests (session/control/ui/midi) ────────
+file(GLOB SHELL_TEST_SRC tests/integration/*.cpp tests/ui/*.cpp)
+foreach(test_file ${SHELL_TEST_SRC})
+    get_filename_component(test_name ${test_file} NAME_WE)
+    add_executable(${test_name} ${test_file})
+    target_link_libraries(${test_name} arranger-engine Threads::Threads)
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endforeach()
+
 # ── SFF1 parser CLI tool ──────────────────────────────────────────────
 add_executable(sff1-parser tools/sff1_parser_cli.cpp)
 target_link_libraries(sff1-parser importer-sff1 arranger-engine)
@@ -77,3 +90,12 @@ target_link_libraries(korg-playback arranger-engine Threads::Threads)
 # Pre-hardware, CI-safe measurement tooling. Its CTest targets aggregate into
 # the top-level test run (scripts/run_tests.sh + CI).
 add_subdirectory(tools/korg_validation)
+
+# ── Gate 14 macOS app shell (JUCE) — CI-optional ──────────────────────
+# The headless app-shell modules (src/session|control|ui|midi) are always built
+# into arranger-engine and CI-tested above. The JUCE GUI app is built ONLY when
+# BUILD_MACOS_APP=ON (default OFF) so CI stays fast and needs no JUCE fetch.
+option(BUILD_MACOS_APP "Build the JUCE macOS app shell (Gate 14)" OFF)
+if(BUILD_MACOS_APP)
+    add_subdirectory(apps/macos)
+endif()
