@@ -18,6 +18,9 @@ file(GLOB_RECURSE ENGINE_SRC
     src/engine/uasf/*.cpp
     src/engine/music/*.cpp
     src/engine/articulation/*.cpp
+    src/engine/performance/*.cpp
+    src/engine/control/*.cpp
+    src/engine/chord/*.cpp
 )
 
 add_library(arranger-engine STATIC ${ENGINE_SRC})
@@ -47,6 +50,17 @@ foreach(test_file ${TEST_SRC})
     target_link_libraries(${test_name} importer-sff1 arranger-engine Threads::Threads)
     target_compile_definitions(${test_name} PRIVATE
         CORPUS_DIR="${CMAKE_SOURCE_DIR}/corpus/yamaha/sff1")
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endforeach()
+
+# ── Gate 12 realtime performer-layer tests ────────────────────────────
+file(GLOB REALTIME_TEST_SRC tests/realtime/*.cpp)
+foreach(test_file ${REALTIME_TEST_SRC})
+    get_filename_component(test_name ${test_file} NAME_WE)
+    add_executable(${test_name} ${test_file})
+    target_link_libraries(${test_name} arranger-engine Threads::Threads)
+    target_compile_definitions(${test_name} PRIVATE
+        REALTIME_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/fixtures/realtime")
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
 

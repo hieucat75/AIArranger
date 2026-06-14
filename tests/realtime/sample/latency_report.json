@@ -1,0 +1,12 @@
+{
+  "deterministic": true,
+  "hardware_validated": false,
+  "scenario": "synthetic_performer_steps",
+  "all_within_budget": true,
+  "metrics": [
+    { "name": "chord_detection", "samples": 64, "mean_ms": 0.000, "max_ms": 0.000, "budget_ms": 1.000, "within_budget": true },
+    { "name": "queue_resolution", "samples": 64, "mean_ms": 0.000, "max_ms": 0.000, "budget_ms": 1.000, "within_budget": true },
+    { "name": "transition", "samples": 4, "mean_ms": 187.500, "max_ms": 375.000, "budget_ms": 500.000, "within_budget": true },
+    { "name": "fill_scheduling", "samples": 3, "mean_ms": 250.000, "max_ms": 500.000, "budget_ms": 500.000, "within_budget": true }
+  ]
+}
