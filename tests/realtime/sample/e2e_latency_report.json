@@ -1,0 +1,11 @@
+{
+  "deterministic": true,
+  "hardware_validated": false,
+  "scenario": "e2e_control_to_dispatch",
+  "all_within_budget": true,
+  "metrics": [
+    { "name": "control_to_section_switch", "samples": 2, "mean_ms": 1899.000, "max_ms": 1899.000, "budget_ms": 2050.000, "within_budget": true },
+    { "name": "chord_to_setchord", "samples": 3, "mean_ms": 0.000, "max_ms": 0.000, "budget_ms": 1.000, "within_budget": true },
+    { "name": "panic_to_idle", "samples": 1, "mean_ms": 0.000, "max_ms": 0.000, "budget_ms": 1.000, "within_budget": true }
+  ]
+}
