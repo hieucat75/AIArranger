@@ -74,7 +74,8 @@ reference to Yamaha/Korg MUST include:
 | G12: Realtime performer layer (deterministic, synthetic) | ✅ **Gate 12 Engine PASS** (merged PR #16, tag `v0.12.0-realtime-performer`) | e1cc59c | 527/527 (38 binaries, 0 fail) |
 | G13: StylePlayer E2E performer integration (deterministic, synthetic) | ✅ **Gate 13 Engine PASS** (merged PR #18, tag `v0.13.0-styleplayer-e2e`) | 1e32f20 | 576/576 (46 binaries, 0 fail) |
 | G14: macOS app shell prototype (JUCE, headless-tested) | ✅ **Gate 14 Engine-side PASS** (merged PR #20, tag `v0.14.0-macos-shell`) | b9615aa | 661/661 (55 binaries, 0 fail) |
-| G14B: macOS playable verification (build+launch+programmatic) | ✅ **Build+launch PASS** (JUCE 8.0.4); manual checks PENDING PTH | (branch, PR open) | see `MACOS_PLAYABLE_VERIFICATION.md` |
+| G14B: macOS playable verification (build+launch+programmatic) | ✅ **Build+launch PASS** (merged PR #21, JUCE 8.0.4); manual PENDING PTH | 4ccdfc5 | see `MACOS_PLAYABLE_VERIFICATION.md` |
+| G14C: CoreMIDI output wiring (engine→IAC/DAW) | ✅ **Engine-side PASS** (branch, PR open); DAW verify PENDING PTH | (branch) | 720/720 (61 binaries, 0 fail) |
 
 ### Current Branch / Release
 `main` — Gate 9 merged via PR #6. Merge SHA `edb6a20`, tag **`v0.9.0-gate9`**.
