@@ -52,7 +52,24 @@ bool SectionSequencer::isQueued() const noexcept {
 }
 
 bool SectionSequencer::advance(int64_t currentTick, int64_t barSize) noexcept {
-    if (!sections_ || section_count_ == 0) return false;
+    if (!sections_ || section_count_ == 0 || barSize <= 0) return false;
+
+    // ── First-start immediate activation (Gate 10B Task C) ────────────
+    // On START the intro is queued but no section is playing yet. Requiring a
+    // bar boundary here meant the intro did not begin until the clock crossed
+    // into bar 2 — a full bar of silence (the G9 "intro one-bar delay"). Yamaha
+    // begins the intro at bar 1 (tick 0), so when nothing is playing yet we
+    // activate the queued section immediately. Subsequent section changes still
+    // wait for the next bar boundary (musical quantise) via the path below.
+    if (current_section_.load(std::memory_order_acquire) < 0) {
+        int queued = queued_section_.load(std::memory_order_acquire);
+        if (queued >= 0 && queued < static_cast<int>(section_count_)) {
+            last_bar_start_.store((currentTick / barSize) * barSize,
+                                  std::memory_order_release);
+            activateSection(queued);
+            return true;
+        }
+    }
 
     // Check if we've crossed a bar boundary
     int64_t currentBar = currentTick / barSize;
@@ -64,26 +81,29 @@ bool SectionSequencer::advance(int64_t currentTick, int64_t barSize) noexcept {
         // Execute queued section switch on bar boundary
         int queued = queued_section_.load(std::memory_order_acquire);
         if (queued >= 0 && queued < static_cast<int>(section_count_)) {
-            current_section_.store(queued, std::memory_order_release);
-            queued_section_.store(-1, std::memory_order_release);
-
-            // Update state based on section type
-            auto st = sections_[queued].type;
-            if (st >= uasf::SectionType::Ending1 && st <= uasf::SectionType::Ending3) {
-                state_.store(SequencerState::PlayingEnding, std::memory_order_release);
-            } else if (st >= uasf::SectionType::Fill1 && st <= uasf::SectionType::Fill4) {
-                state_.store(SequencerState::PlayingFill, std::memory_order_release);
-            } else if (st >= uasf::SectionType::Main1 && st <= uasf::SectionType::Main4) {
-                state_.store(SequencerState::PlayingMain, std::memory_order_release);
-            } else if (st >= uasf::SectionType::Intro1 && st <= uasf::SectionType::Intro3) {
-                state_.store(SequencerState::PlayingIntro, std::memory_order_release);
-            }
-
+            activateSection(queued);
             return true; // Section switched
         }
     }
 
     return false;
+}
+
+void SectionSequencer::activateSection(int index) noexcept {
+    current_section_.store(index, std::memory_order_release);
+    queued_section_.store(-1, std::memory_order_release);
+
+    // Update state based on section type
+    auto st = sections_[index].type;
+    if (st >= uasf::SectionType::Ending1 && st <= uasf::SectionType::Ending3) {
+        state_.store(SequencerState::PlayingEnding, std::memory_order_release);
+    } else if (st >= uasf::SectionType::Fill1 && st <= uasf::SectionType::Fill4) {
+        state_.store(SequencerState::PlayingFill, std::memory_order_release);
+    } else if (st >= uasf::SectionType::Main1 && st <= uasf::SectionType::Main4) {
+        state_.store(SequencerState::PlayingMain, std::memory_order_release);
+    } else if (st >= uasf::SectionType::Intro1 && st <= uasf::SectionType::Intro3) {
+        state_.store(SequencerState::PlayingIntro, std::memory_order_release);
+    }
 }
 
 void SectionSequencer::setCurrentChord(const Chord& chord) noexcept {
