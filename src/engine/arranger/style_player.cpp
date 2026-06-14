@@ -160,6 +160,23 @@ void StylePlayer::setEventCallback(PlaybackEventCallback cb) noexcept {
     event_cb_ = std::move(cb);
 }
 
+void StylePlayer::setArticulationRenderer(
+        const articulation::IArticulationRenderer& r) noexcept {
+    renderer_ = &r;
+}
+
+namespace {
+// Realtime-safe sink: forwards rendered events straight to the scheduler.
+// Stack-constructed per dispatch pass (tiny, no heap).
+struct SchedulerSink final : articulation::EventSink {
+    midi::MidiScheduler& scheduler;
+    explicit SchedulerSink(midi::MidiScheduler& s) noexcept : scheduler(s) {}
+    void emit(const uasf::MidiEvent& ev) noexcept override {
+        scheduler.scheduleEvent(ev);
+    }
+};
+} // namespace
+
 void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
                                           int64_t currentTick,
                                           Chord chord) noexcept {
@@ -168,6 +185,8 @@ void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
     // time advances, so NoteOn/NoteOff pairs stay balanced (no stuck notes).
     const int64_t rel = currentTick - section_origin_tick_;
     if (rel < 0 || rel <= section_rel_cursor_) return;
+
+    SchedulerSink sink(scheduler_);
 
     for (const auto& track : section.tracks) {
         for (const auto& event : track.events) {
@@ -204,7 +223,11 @@ void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
                 panic_handler_.noteOff(dispatched.channel, dispatched.data1);
             }
 
-            scheduler_.scheduleEvent(dispatched);
+            // Route through the articulation render strategy (Task C). The
+            // default naive renderer emits exactly this one event, preserving
+            // the previous behaviour; a keyswitch renderer may inject the
+            // articulation-select note ahead of the main note.
+            renderer_->render(dispatched, track.articulation, sink);
         }
     }
 

@@ -7,6 +7,7 @@
 #include "engine/midi/panic.h"
 #include "engine/arranger/chord_input.h"
 #include "engine/arranger/section_sequencer.h"
+#include "engine/articulation/renderer.h"
 #include <vector>
 #include <functional>
 
@@ -64,6 +65,11 @@ public:
     // ── Event callback for demo/debug ──────────────────────────────
     void setEventCallback(PlaybackEventCallback cb) noexcept;
 
+    // ── Articulation render strategy (Gate 10 Task C) ──────────────
+    // Defaults to the naive pass-through renderer (backward-compatible). The
+    // caller owns the renderer's lifetime; pass a long-lived instance.
+    void setArticulationRenderer(const articulation::IArticulationRenderer& r) noexcept;
+
 private:
     realtime::RealtimeClock& clock_;
     midi::MidiScheduler&     scheduler_;
@@ -83,6 +89,10 @@ private:
 
     // Event callback for demo/debug
     PlaybackEventCallback event_cb_{nullptr};
+
+    // Articulation render strategy. Backward-compatible default = pass-through.
+    const articulation::IArticulationRenderer* renderer_{
+        &articulation::defaultRenderer()};
 
     // Dispatch events from the current section that are <= currentTick
     void dispatchSectionEvents(const uasf::SectionDefinition& section,

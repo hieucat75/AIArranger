@@ -17,6 +17,7 @@ file(GLOB_RECURSE ENGINE_SRC
     src/engine/arranger/*.cpp
     src/engine/uasf/*.cpp
     src/engine/music/*.cpp
+    src/engine/articulation/*.cpp
 )
 
 add_library(arranger-engine STATIC ${ENGINE_SRC})
