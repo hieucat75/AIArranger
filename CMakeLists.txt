@@ -57,3 +57,8 @@ target_link_libraries(sff1-parser importer-sff1 arranger-engine)
 # ── Korg playback CLI (Gate 9 manual Musical Review driver) ───────────
 add_executable(korg-playback tools/korg_playback_cli.cpp)
 target_link_libraries(korg-playback arranger-engine Threads::Threads)
+
+# ── KORG validation harness (Gate 11) ─────────────────────────────────
+# Pre-hardware, CI-safe measurement tooling. Its CTest targets aggregate into
+# the top-level test run (scripts/run_tests.sh + CI).
+add_subdirectory(tools/korg_validation)
