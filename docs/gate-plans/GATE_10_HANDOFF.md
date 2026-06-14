@@ -1,9 +1,12 @@
-# Gate 10 — Handoff (NTT + Articulation + CASM Hardening)
+# Gate 10A — Handoff (NTT + Articulation + CASM Hardening)
 
-> Branch `gate-10-ntt-articulation-casm-hardening` off `main` (`5341263`).
-> **Status: ✅ DONE** — 19 test binaries, 292 assertions, 0 failures.
+> Branch `gate-10-ntt-articulation-casm-hardening` off `main` (`5341263`),
+> merged via **PR #8** (`79e9f17`), tag **`v0.10.0-gate10`**.
+> **Status: ✅ Gate 10A Engine Integration PASS** — 19 test binaries, 292
+> assertions, 0 failures. This is the **engine-integration slice only**; it is
+> NOT "Gate 10 FULL PASS". Musical / hardware validation is **Gate 10B**.
 > Yamaha hardware validation explicitly deferred to **Gate 10B / pre-beta** per
-> user spec. No hardware was required to complete Gate 10.
+> user spec. No hardware was required for Gate 10A.
 
 ---
 
@@ -130,23 +133,47 @@ Every edge case now has a defined contract:
 
 ---
 
-## 6. Residual risks / open items (→ Gate 10B)
+## 6. Known Non-Bugs (intentional, NOT data loss)
 
-- **NTT calibration:** tables are built from music theory, not A/B-matched to
-  reference Yamaha audio. Spec §6.3 flags this for ear-tuning. v1 is "sounds
-  right", not "bit-identical to Yamaha".
-- **Guitar (SFF2) NTT + true MegaVoice rendering** fall back to
-  RootTransposition / Naive — full support is Gate 10B.
-- **Swing/shuffle (G9 P1 #3)** and **intro one-bar-delay semantics (G9 P1 #5)**
-  were NOT in Gate 10 scope and remain open.
-- **Per-*section* event splitting** (vs per-channel) still relies on CASM
-  section structure being separate from the single SMF MTrk; SMF marker-based
-  section boundaries are not yet parsed.
-- **Manual Korg review (G9 P1 #1, #2)** still pending hardware — unchanged.
+- **3876 dispatched vs 4876 source note events.** The gap is intentional dedupe
+  of duplicate voices produced by chord transpose: when two source voices map
+  onto the same MIDI note at the same time, the second NoteOn (and its orphan
+  NoteOff) is suppressed to keep one balanced NoteOn/NoteOff pair per sounding
+  note. This avoids the stuck-note risk PR #7's dedupe was added to fix. Source
+  file integrity is verified independently by `roundtrip_notes = 4876` (no
+  events are lost on disk). **This is correct MIDI hygiene, not data loss.**
+
+## 7. Residual risks / open items (→ Gate 10B)
+
+> These define **Gate 10B (pre-beta dependency)**. Gate 10A does NOT cover them.
+
+1. **Yamaha/Korg hardware playback validation** — manual scorecard on a real
+   device (also covers G9 P1 #1, #2, still pending hardware).
+2. **Swing / shuffle groove model** — deferred from G9 P1 #3; not modeled.
+3. **Intro one-bar-delay semantics** — deferred from G9 P1 #5; decide keep vs
+   immediate-start.
+4. **NTT A/B calibration against authentic Yamaha audio** — the NTT engine is
+   implemented but NOT musically validated. Tables are built from music theory
+   (spec §6.3), "sounds right" not "bit-identical to Yamaha"; tune by ear vs
+   reference.
+5. **Guitar (SFF2) NTT + true MegaVoice rendering** — currently fall back to
+   RootTransposition / Naive.
+6. **Per-*section* event splitting** (vs per-channel) — SMF marker-based section
+   boundaries are not yet parsed.
 
 ---
 
-## 7. Merge status
+## 8. Merge status
 
-**MERGE_ALLOWED: NO** — pending user review per Gate discipline (do not merge to
-`main` without PTH approval). Branch is pushed; PR open for review.
+**MERGED** — PR #8 approved by PTH and merged to `main` (merge SHA `79e9f17`),
+tagged **`v0.10.0-gate10`**. Post-merge suite on `main`: 19 binaries / 292
+assertions / 0 failures.
+
+> Gate 10A (engine integration) is closed. **Gate 10B** (hardware + groove + NTT
+> calibration, §7) remains the next gate and requires Yamaha/Korg hardware.
+
+### CI note
+No GitHub Actions CI is configured for this repo (`.github/workflows/` absent),
+so there are no PR checks to report green/red. Verification is the local CTest
+suite (292/292, 0 fail), reproduced post-merge on `main`. Standing up CI is an
+infra follow-up, not a Gate 10A blocker.
