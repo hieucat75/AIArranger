@@ -6,6 +6,24 @@
 
 ---
 
+## 0. Evidence
+
+| Item | Value |
+|------|-------|
+| PR | https://github.com/hieucat75/AIArranger/pull/6 |
+| Merge into `main` (SHA) | `edb6a20ce2a19c125db72566349c737f11648540` |
+| Tag | `v0.9.0-gate9` (→ `edb6a20`) |
+| Tests | **218 assertions / 14 binaries / 0 fail** |
+| Latency (schedule→dispatch, dev Mac) | p50 ≈ 200 µs, **p99 ≈ 385 µs**, no loss |
+| Musical Review | **17 / 25 — CONDITIONAL PASS** (`.openclaw/review/GATE_9_MUSICAL_REVIEW.md`) |
+| Open P1 items | see `docs/gate-plans/GATE_9_OPEN_ITEMS.md` |
+| Manual Korg checklist | see `docs/gate-plans/GATE_9_MANUAL_KORG_CHECKLIST.md` |
+
+> Gate 9 reaches **FULL PASS** once PTH completes the manual Korg review (Groove +
+> Articulation) and records the scores into the Musical Review.
+
+---
+
 ## 1. What Gate 9 set out to do
 
 Validate the playback pipeline end-to-end and add the real external-MIDI path, so a

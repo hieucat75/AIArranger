@@ -16,16 +16,25 @@
 | G5: SFF1 Parser Spike | ✅ Merged | ebaa59c | 140/140 |
 | G6: SFF2/SMF Corpus Validation | ✅ Merged | 72131a5 | 140/140 |
 | G7: CASM Semantic Analysis | ✅ BRANCH (ready) | b744774 | 173/173 |
-| G8: NTR/NTT + Chord-Aware Transpose | ✅ Merged into G9 | e33ea1e | (folded into G9) |
-| G9: Multi-Playback Validation | ✅ BRANCH (ready) | f72e836 | 218/218 (14 binaries, 0 fail) |
+| G8: NTR/NTT + Chord-Aware Transpose | ✅ Merged to main | d7441b7 | folded into G9 |
+| G9: Multi-Playback Validation | ✅ DONE — CONDITIONAL PASS (manual Korg pending) | edb6a20 | 218/218 (14 binaries, 0 fail) |
 
-### Current Branch
-`gate-9-multi-playback-validation` — includes the Gate 8 merge; NOT merged to main yet.
-PR #6 carries both the G8 merge and the Gate 9 commits.
+### Current Branch / Release
+`main` — Gate 9 merged via PR #6. Merge SHA `edb6a20`, tag **`v0.9.0-gate9`**.
+
+> **Gate 9 → FULL PASS** once PTH completes the manual Korg review (Groove +
+> Articulation) and records the scores into `.openclaw/review/GATE_9_MUSICAL_REVIEW.md`.
+> See `docs/gate-plans/GATE_9_MANUAL_KORG_CHECKLIST.md` and `GATE_9_OPEN_ITEMS.md`.
 
 > Note: the current committed test sources enumerate **143** baseline (G7+G8) assertions
 > in this tree; Gate 9 adds 75 → **218 total** (the earlier "173" figure reflected an older
 > enumeration and is unrelated to Gate 9). See `docs/gate-plans/GATE_9_HANDOFF.md`.
+
+### Gate 10 scope (next)
+- Full NTT tables (Guitar/Bass/Scale/Chord/Percussion)
+- Articulation render strategy (keyswitch / MegaVoice)
+- CASM→UASF semantic hardening
+- Yamaha hardware validation → defer to Gate 10B / pre-beta
 
 ### Repository
 https://github.com/hieucat75/AIArranger
