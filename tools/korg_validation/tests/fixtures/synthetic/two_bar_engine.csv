@@ -1,0 +1,17 @@
+# Synthetic engine-side capture: 2 bars, 480 PPQN, simple bass+drum.
+# Columns: tick,status,data1,data2   (status/data may be decimal or 0xNN)
+ppqn=480
+# bar 1
+0,0x90,36,100      # bass C2 on (ch0)
+0,0x99,36,100      # kick on (ch9)
+240,0x80,36,0      # bass off
+240,0x89,36,0      # kick off
+480,0x90,43,90     # bass G2 on
+720,0x80,43,0
+960,0x99,38,90     # snare
+1080,0x89,38,0
+# bar 2
+1920,0x90,36,100
+2160,0x80,36,0
+2400,0x90,43,90
+2640,0x80,43,0

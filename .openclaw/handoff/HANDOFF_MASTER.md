@@ -70,6 +70,7 @@ reference to Yamaha/Korg MUST include:
 | G10A: NTT + Articulation + CASM hardening (engine integration) | ✅ **Gate 10A Engine Integration PASS** (merged PR #8, tag `v0.10.0-gate10`) | 79e9f17 | 292/292 (19 binaries, 0 fail) |
 | G10B (engine): swing + intro-fix + Guitar/MegaVoice + corpus split | ✅ **Gate 10B Engine PASS** (branch `gate-10b-...`, PR open) | (branch) | 345/345 (22 binaries, 0 fail) |
 | G10B (hardware): Yamaha/Korg validation + NTT A/B calibration | ⏳ **PENDING PTH** (needs hardware; checklist + calibration docs ready) | — | — |
+| G11: KORG validation harness (pre-hardware, synthetic) | ✅ **Gate 11 Harness PASS (synthetic)** (branch, PR open) | (branch) | 430/430 (29 binaries, 0 fail) |
 
 ### Current Branch / Release
 `main` — Gate 9 merged via PR #6. Merge SHA `edb6a20`, tag **`v0.9.0-gate9`**.
@@ -97,6 +98,17 @@ reference to Yamaha/Korg MUST include:
 - ✅ Intro one-bar delay fix (immediate first-section start) — G9 P1 #5 closed.
 - ✅ Guitar NTT (`NttMode::Guitar`) + MegaVoice graceful-degrade renderer.
 - ✅ Per-section split validation across the full corpus (4 Genos styles).
+
+### Gate 11 — KORG validation harness ✅ PASS (synthetic) (see `docs/gate-plans/GATE_11_HANDOFF.md`)
+> Pre-hardware measurement tooling under `tools/korg_validation/`. CI-safe,
+> synthetic-only. **Software harness PASS allowed; hardware parity + KORG
+> compatibility claims FORBIDDEN** until real PA capture evidence committed.
+> Every report emits `hardware_validated: false`.
+- ✅ MIDI capture (CSV+SMF), timing differential, transition validator, chord
+  latency, panic/stuck-note, jitter, JSON+MD reporter, Korg fixture slots.
+- ✅ 7 new test binaries / 85 assertions; sample report committed.
+- ⏳ Reactivate with a real Korg PA700/PA1000: drop a capture in
+  `fixtures/korg/<MODEL>/`, run `korg-validate`. No code changes needed.
 
 ### Gate 10B — hardware slice (PENDING PTH, needs a real device)
 1. **Yamaha/Korg hardware playback validation** — `GATE_10B_HARDWARE_CHECKLIST.md`

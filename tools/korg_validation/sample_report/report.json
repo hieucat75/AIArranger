@@ -1,0 +1,13 @@
+{
+  "harness_version": 1,
+  "hardware_validated": false,
+  "fixture": "synthetic_two_bar (engine vs +5tick reference)",
+  "timing": { "matched": 6, "orphan_engine": 0, "orphan_reference": 0, "within_tolerance": 5, "mean_ms": 0.868, "max_abs_ms": 5.208, "stddev_ms": 1.941 },
+  "transitions": [
+    { "label": "Main A (start)", "expected_tick": 0, "actual_tick": 0, "delta": 0, "grid_offset": 0, "on_boundary": true, "on_time": true },
+    { "label": "Main A->B", "expected_tick": 1920, "actual_tick": 1920, "delta": 0, "grid_offset": 0, "on_boundary": true, "on_time": true }
+  ],
+  "latency": { "events": 2, "missing": 0, "mean_ms": 0.000, "max_ms": 0.000 },
+  "stuck": { "balanced": true, "hanging": 0, "double_on": 0, "orphan_off": 0 },
+  "jitter": { "events": 3, "mean_abs_ms": 1.736, "p95_ms": 5.208, "max_ms": 5.208 }
+}
