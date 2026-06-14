@@ -20,7 +20,8 @@
 | G9: Multi-Playback Validation | ✅ DONE — CONDITIONAL PASS (manual Korg pending) | edb6a20 | 218/218 (14 binaries, 0 fail) |
 | G9.1: .sty→.uasf resolution fix | ✅ Merged | 5341263 (PR #7) | 15 binaries, 0 fail |
 | G10A: NTT + Articulation + CASM hardening (engine integration) | ✅ **Gate 10A Engine Integration PASS** (merged PR #8, tag `v0.10.0-gate10`) | 79e9f17 | 292/292 (19 binaries, 0 fail) |
-| G10B: Hardware validation + groove + NTT calibration | ⏳ **PENDING** (pre-beta, needs Yamaha/Korg hardware) | — | — |
+| G10B (engine): swing + intro-fix + Guitar/MegaVoice + corpus split | ✅ **Gate 10B Engine PASS** (branch `gate-10b-...`, PR open) | (branch) | 345/345 (22 binaries, 0 fail) |
+| G10B (hardware): Yamaha/Korg validation + NTT A/B calibration | ⏳ **PENDING PTH** (needs hardware; checklist + calibration docs ready) | — | — |
 
 ### Current Branch / Release
 `main` — Gate 9 merged via PR #6. Merge SHA `edb6a20`, tag **`v0.9.0-gate9`**.
@@ -42,13 +43,20 @@
 - ✅ Articulation render strategy (`IArticulationRenderer`: Naive + Keyswitch)
 - ✅ CASM→UASF semantic hardening (defensive mapper + edge-case suite)
 
-### Gate 10B scope — pre-beta dependency (PENDING, needs hardware)
-1. **Yamaha/Korg hardware playback validation** — manual scorecard on a real device.
-2. **Swing / shuffle groove model** — deferred from G9 P1 #3 (not modeled).
-3. **Intro one-bar delay semantics** — deferred from G9 P1 #5 (decide keep vs immediate-start).
-4. **NTT A/B calibration against authentic Yamaha audio** — NTT engine is
-   implemented but NOT musically validated; tune tables by ear vs reference.
-5. SFF2 Guitar NTT + true MegaVoice rendering (currently fall back).
+### Gate 10B — engine slice ✅ PASS (see `docs/gate-plans/GATE_10B_HANDOFF.md`)
+> Engine-side complete; hardware-side pending PTH. Not "Gate 10B FULL PASS".
+- ✅ Swing / shuffle groove model (`src/engine/music/groove`) — G9 P1 #3 closed.
+- ✅ Intro one-bar delay fix (immediate first-section start) — G9 P1 #5 closed.
+- ✅ Guitar NTT (`NttMode::Guitar`) + MegaVoice graceful-degrade renderer.
+- ✅ Per-section split validation across the full corpus (4 Genos styles).
+
+### Gate 10B — hardware slice (PENDING PTH, needs a real device)
+1. **Yamaha/Korg hardware playback validation** — `GATE_10B_HARDWARE_CHECKLIST.md`
+   ready; scorecard feeds `GATE_9_MUSICAL_REVIEW.md` §6 (also G9 P1 #1/#2).
+2. **NTT A/B calibration vs authentic Yamaha** — `GATE_10B_NTT_CALIBRATION.md`
+   ready (engine reference table embedded); capture + log discrepancies.
+3. Swing feel + per-style swing %, true MegaVoice rendering, marker-based
+   per-section event splitting — future tuning/work.
 
 ### Repository
 https://github.com/hieucat75/AIArranger
