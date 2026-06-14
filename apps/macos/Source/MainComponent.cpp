@@ -8,6 +8,16 @@ MainComponent::MainComponent() {
     transportVm_.setControlSink(
         [this](const control::ControlEvent& e) { bridge_.sendControl(e); });
 
+    // Chord intent -> bridge as a Chord ControlEvent (decoded on the engine
+    // thread), keeping the UI off the engine's threads.
+    chordVm_.setChordSink([this](const arranger::Chord& c) {
+        control::ControlEvent e;
+        e.action = control::ControlAction::Chord;
+        e.param = (static_cast<int32_t>(c.root) & 0xFF) |
+                  (static_cast<int32_t>(c.type) << 8);
+        bridge_.sendControl(e);
+    });
+
     addAndMakeVisible(transport_);
     addAndMakeVisible(chord_);
     addAndMakeVisible(diagnostics_);

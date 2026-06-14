@@ -67,6 +67,23 @@ void PerformerAdapter::handleControl(const control::ControlEvent& ev) noexcept {
         case ControlAction::Ending:
             player_.ending();
             break;
+        case ControlAction::Chord: {
+            // UI chord intent decoded on the engine thread (thread-safe via the
+            // bridge): param = root | (type << 8).
+            arranger::Chord c;
+            c.root = static_cast<uint8_t>(ev.param & 0xFF);
+            c.type = static_cast<arranger::ChordType>((ev.param >> 8) & 0xFF);
+            c.bass = 0; c.octave = 0;
+            last_chord_ = c;
+            if (c.type != arranger::ChordType::NoChord) {
+                if (sync_.isArmed() && sync_.onChordPresent()) {
+                    sm_.apply(performance::PerformerInput::ChordDetected);
+                    player_.start(0);
+                }
+                player_.setChord(c);
+            }
+            break;
+        }
         case ControlAction::Panic:
             doPanic();
             break;
