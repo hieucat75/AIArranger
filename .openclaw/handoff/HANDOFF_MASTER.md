@@ -18,6 +18,8 @@
 | G7: CASM Semantic Analysis | ✅ BRANCH (ready) | b744774 | 173/173 |
 | G8: NTR/NTT + Chord-Aware Transpose | ✅ Merged to main | d7441b7 | folded into G9 |
 | G9: Multi-Playback Validation | ✅ DONE — CONDITIONAL PASS (manual Korg pending) | edb6a20 | 218/218 (14 binaries, 0 fail) |
+| G9.1: .sty→.uasf resolution fix | ✅ Merged | 5341263 (PR #7) | 15 binaries, 0 fail |
+| G10: NTT + Articulation + CASM hardening | ✅ DONE (branch, PR open) | (branch `gate-10-ntt-articulation-casm-hardening`) | 292/292 (19 binaries, 0 fail) |
 
 ### Current Branch / Release
 `main` — Gate 9 merged via PR #6. Merge SHA `edb6a20`, tag **`v0.9.0-gate9`**.
@@ -30,11 +32,18 @@
 > in this tree; Gate 9 adds 75 → **218 total** (the earlier "173" figure reflected an older
 > enumeration and is unrelated to Gate 9). See `docs/gate-plans/GATE_9_HANDOFF.md`.
 
-### Gate 10 scope (next)
-- Full NTT tables (Guitar/Bass/Scale/Chord/Percussion)
-- Articulation render strategy (keyswitch / MegaVoice)
-- CASM→UASF semantic hardening
-- Yamaha hardware validation → defer to Gate 10B / pre-beta
+### Gate 10 scope (✅ DONE — see `docs/gate-plans/GATE_10_HANDOFF.md`)
+- ✅ Per-channel/per-role track splitting (fixes PR #7 musical-fidelity drop)
+- ✅ Full NTR/NTT tables (`src/engine/music/ntt`) — Bass/Chord/Melody + scale modes
+- ✅ Articulation render strategy (`IArticulationRenderer`: Naive + Keyswitch)
+- ✅ CASM→UASF semantic hardening (defensive mapper + edge-case suite)
+
+### Gate 10B scope (next — Yamaha hardware / pre-beta)
+- Yamaha hardware playback validation (deferred per user spec)
+- Swing/shuffle groove model (G9 P1 #3, still open)
+- Intro one-bar delay semantics decision (G9 P1 #5, still open)
+- NTT A/B calibration vs reference Yamaha audio (tune tables by ear)
+- SFF2 Guitar NTT + true MegaVoice rendering (currently fall back)
 
 ### Repository
 https://github.com/hieucat75/AIArranger

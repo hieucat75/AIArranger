@@ -8,9 +8,9 @@
 |---|------|------|-------|-----------------|
 | ☐ 1 | **Groove preservation on real Korg hardware** | Manual review | PTH | Run `build/korg-playback` on the Korg; score 0–5 (see manual checklist) |
 | ☐ 2 | **Articulation fidelity / keyswitch / MegaVoice behavior** | Manual review | PTH | Listen on Korg; score 0–5; note rendering gaps |
-| ☐ 3 | **Swing / shuffle not modeled** | Engine deferral | Gate 10 | Add groove/swing model to timing path |
-| ☐ 4 | **NTT tables simplified (root/fifth only)** | Engine deferral | Gate 10 | Implement full NTT tables (Guitar/Bass/Scale/Chord/Percussion) |
-| ☐ 5 | **Intro one-bar delay semantics** | Document / revisit | Gate 10 | Sequencer activates a queued section on the *first* bar boundary (asserted by `test_section_sequencer`). Decide: keep & document, or add an immediate-start path |
+| ☐ 3 | **Swing / shuffle not modeled** | Engine deferral | Gate 10B | Add groove/swing model to timing path — NOT addressed in Gate 10 |
+| ☑ 4 | **NTT tables simplified (root/fifth only)** | Engine deferral | ✅ Gate 10 (Task B) | Implemented full table-driven NTR/NTT in `src/engine/music/ntt` (Bass/Chord/Melody + Melodic/Harmonic/Natural minor + Dorian). Guitar/SFF2 fall back to RootTransposition with a log. See `GATE_10_HANDOFF.md`. |
+| ☐ 5 | **Intro one-bar delay semantics** | Document / revisit | Gate 10B | Sequencer activates a queued section on the *first* bar boundary (asserted by `test_section_sequencer`). Decide: keep & document, or add an immediate-start path — NOT addressed in Gate 10 |
 
 ## Notes
 
