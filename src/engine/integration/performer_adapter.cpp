@@ -84,6 +84,15 @@ void PerformerAdapter::handleControl(const control::ControlEvent& ev) noexcept {
             }
             break;
         }
+        case ControlAction::NoteOn:
+            noteOn(static_cast<uint8_t>(ev.param & 0x7F));
+            break;
+        case ControlAction::NoteOff:
+            noteOff(static_cast<uint8_t>(ev.param & 0x7F));
+            break;
+        case ControlAction::Sustain:
+            setSustain(ev.param != 0);
+            break;
         case ControlAction::Panic:
             doPanic();
             break;
@@ -107,6 +116,8 @@ void PerformerAdapter::tick() noexcept {
 
 void PerformerAdapter::noteOn(uint8_t note) noexcept {
     if (split_.zoneOf(note) != performance::Zone::Lower) return; // upper zone: ignore for chord
+    // A re-press cancels any pending sustain-hold release for this note.
+    forgetSustained(note);
     if (held_count_ >= kMaxHeld) return;
     // insert keeping ascending order, dedupe
     int i = held_count_;
@@ -118,13 +129,51 @@ void PerformerAdapter::noteOn(uint8_t note) noexcept {
 }
 
 void PerformerAdapter::noteOff(uint8_t note) noexcept {
+    // Sustain pedal down: keep the note sounding (in the chord set) and defer the
+    // actual release until the pedal lifts. Only defer notes that are truly held.
+    if (sustain_) {
+        for (int i = 0; i < held_count_; ++i) {
+            if (held_[i] == note) { rememberSustained(note); return; }
+        }
+        return; // not held (e.g. upper zone) — nothing to defer
+    }
+    if (removeHeld(note)) redetectChord();
+}
+
+void PerformerAdapter::setSustain(bool on) noexcept {
+    if (sustain_ == on) return;
+    sustain_ = on;
+    if (on) return;
+    // Pedal lifted: apply every deferred release at once, then re-detect.
+    bool changed = false;
+    for (int i = 0; i < sustained_count_; ++i) changed |= removeHeld(sustained_[i]);
+    sustained_count_ = 0;
+    if (changed) redetectChord();
+}
+
+bool PerformerAdapter::removeHeld(uint8_t note) noexcept {
     int idx = -1;
     for (int i = 0; i < held_count_; ++i) if (held_[i] == note) { idx = i; break; }
-    if (idx < 0) return;
+    if (idx < 0) return false;
     for (int i = idx; i + 1 < held_count_; ++i) held_[i] = held_[i + 1];
     --held_count_;
-    // Sync-start arms on the first chord; fire on note-on transitions only.
-    redetectChord();
+    return true;
+}
+
+void PerformerAdapter::rememberSustained(uint8_t note) noexcept {
+    for (int i = 0; i < sustained_count_; ++i) if (sustained_[i] == note) return; // dedupe
+    if (sustained_count_ >= kMaxHeld) return;
+    sustained_[sustained_count_++] = note;
+}
+
+void PerformerAdapter::forgetSustained(uint8_t note) noexcept {
+    for (int i = 0; i < sustained_count_; ++i) {
+        if (sustained_[i] == note) {
+            for (int j = i; j + 1 < sustained_count_; ++j) sustained_[j] = sustained_[j + 1];
+            --sustained_count_;
+            return;
+        }
+    }
 }
 
 void PerformerAdapter::redetectChord() noexcept {
