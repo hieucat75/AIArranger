@@ -1,7 +1,7 @@
 #ifndef AI_ARRANGER_MIDI_COREMIDI_IN_H
 #define AI_ARRANGER_MIDI_COREMIDI_IN_H
 
-#include "midi/midi_input_parser.h"     // MidiInputMessage + parseMidiInput
+#include "midi/midi_input_source.h"     // IMidiInputSource + MidiSourceInfo + MidiInputMessage
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -11,11 +11,6 @@
 #include <CoreMIDI/CoreMIDI.h>
 
 namespace ai_arranger::midi {
-
-struct MidiSourceInfo {
-    int         index = -1;
-    std::string name;
-};
 
 /**
  * Real CoreMIDI input from an external keyboard/controller — the symmetric
@@ -34,12 +29,10 @@ struct MidiSourceInfo {
  *   - The parsing/routing logic is fully testable without hardware via
  *     parseMidiInput() + routeMidiInput() (see tests/midi/test_midi_input_parser).
  */
-class CoreMidiIn {
+class CoreMidiIn final : public IMidiInputSource {
 public:
-    using MessageSink = std::function<void(const MidiInputMessage&)>;
-
     CoreMidiIn() = default;
-    ~CoreMidiIn();
+    ~CoreMidiIn() override;
 
     CoreMidiIn(const CoreMidiIn&) = delete;
     CoreMidiIn& operator=(const CoreMidiIn&) = delete;
@@ -49,20 +42,19 @@ public:
     void shutdown() noexcept;
     [[nodiscard]] bool isInitialized() const noexcept;
 
-    // ── Source management (non-realtime) ─────────────────────────────
-    [[nodiscard]] std::vector<MidiSourceInfo> enumerateSources() const noexcept;
-    [[nodiscard]] int sourceCount() const noexcept;
+    // ── IMidiInputSource ─────────────────────────────────────────────
+    std::vector<MidiSourceInfo> enumerateSources() const noexcept override;
+    int sourceCount() const noexcept override;
     // Connect the port to source `index`; -1 disconnects. Returns false if out
     // of range. Remembers the name for hot-plug re-resolution.
-    bool selectSource(int index) noexcept;
-    [[nodiscard]] int  selectedSource() const noexcept;
-    [[nodiscard]] bool hasLiveSource() const noexcept;
+    bool selectSource(int index) noexcept override;
+    int  selectedSource() const noexcept override;
+    bool hasLiveSource() const noexcept override;
 
-    // ── Sink ─────────────────────────────────────────────────────────
     // Invoked for every parsed message on the read thread. Set before selecting.
-    void setSink(MessageSink sink) noexcept { sink_ = std::move(sink); }
+    void setSink(MessageSink sink) noexcept override { sink_ = std::move(sink); }
 
-    [[nodiscard]] uint64_t receivedCount() const noexcept {
+    uint64_t receivedCount() const noexcept override {
         return received_.load(std::memory_order_relaxed);
     }
 
