@@ -190,17 +190,19 @@ latency — those are the device-only, PTH-run items.
 
 ## 8. Phasing — what I implement now (no signing/hardware) vs. blocked
 
-| Phase | Work | Needs device/signing? |
-|---|---|---|
-| **1. Platform boundary** | Split CMake into `arranger-core` (portable) + `platform-apple`; move CoreMIDI/CoreAudio adapters; add `IMidiInputSource`; keep macOS app + all 73 tests green. | **No** — do now |
-| **2. LiveEngineFacade + snapshot** | Thin C++ facade over `EngineSession` + in/out adapters + chord latch; atomic UI snapshot struct; headless tests. | **No** — do now |
-| **3. Chord latch (~80 ms)** | Deterministic latch in `PerformerAdapter`; headless tests (latch replaces without flicker; interacts with sustain). | **No** — do now |
-| **4. Fake-provider E2E** | Fake iOS MIDI in/out; assert no stuck notes across disconnect/reconnect/panic. | **No** — do now |
-| **5. Xcode project + bridge scaffolding** | `apps/ios/` project, `AiArrangerCore` target, Swift/C++ interop wrapper, Live screen SwiftUI bound to the snapshot, view models. Builds on **Simulator**. | Simulator only (no signing) — do now if Xcode present |
-| **6. On-device bring-up** | Signing, provisioning, run on iPad, real CoreMIDI, latency/stability. | **Yes — PTH/hardware. STOP here.** |
+| Phase | Work | Needs device/signing? | Status |
+|---|---|---|---|
+| **1. Platform boundary** | Split CMake into portable core + `platform-apple` (CoreMIDI/CoreAudio); add `IMidiInputSource`; keep all tests green. | **No** | ✅ **DONE** (commit `ed2647d`) — core links no Apple framework; `sff1-parser` links core alone; 73/73 green |
+| **2. LiveEngineFacade + snapshot** | Portable C++ facade over `EngineSession` + injected in/out; atomic UI snapshot; headless tests. | **No** | ✅ **DONE** (commit `003d650`) — 74/74 green |
+| **3. Chord latch (~80 ms)** | Deterministic latch in `PerformerAdapter` (sample-position based via clock); interacts with sustain. | **No** (but see note) | ⏸ **Deferred into the device slice** per PTH ("not a separate engine-first phase"). Design: latch window in samples from `clock.getSamplePosition()`/`getSampleRate()`; default hold-mode ON preserves current behaviour; hold-mode OFF + latch clears to NoChord after the window. Needs a `StylePlayer::setChord(NoChord)` semantics check first. |
+| **4. Fake-provider E2E** | Fake in/out; assert no stuck notes across stop/panic. | **No** | ✅ **Covered** by `test_live_engine_facade` (no stuck notes on stop; panic dispatches CC120/123). Disconnect/reconnect/background scenarios remain for the device slice. |
+| **5. Xcode project + bridge scaffolding** | `apps/ios/` project, Swift/C++ interop, Live screen SwiftUI. | Needs **full Xcode** | ⛔ **BLOCKED** — this environment has only Command Line Tools (`xcodebuild` unavailable, no iOS SDK/simulator). Cannot author + verify the Xcode project / Swift here. |
+| **6. On-device bring-up** | Signing, provisioning, run on iPad, real CoreMIDI, latency/stability. | **Yes** | ⛔ **BLOCKED** — signing + hardware (PTH). |
 
-I proceed autonomously through Phases 1–5 (each build/test-verified), then stop
-at Phase 6 and report exactly what needs signing/hardware.
+**Environment note (2026-07-11):** only Apple Command Line Tools are installed
+(Swift 6.2 compiler present, but no `xcodebuild`, no iOS SDK, no simulators).
+Phases 1–2–4 (pure CMake/headless) are complete + verified. Phases 5–6 require
+full Xcode + signing + an iPad and are the STOP point.
 
 ---
 
