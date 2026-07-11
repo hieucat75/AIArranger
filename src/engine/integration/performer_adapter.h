@@ -44,8 +44,18 @@ public:
 
     // Held-note input (lower zone feeds chord detection; upper zone ignored for
     // chord). Re-runs detection and pushes the chord to StylePlayer.
+    // These apply immediately on the CALLER thread — safe to call directly from
+    // the engine thread or a test. For asynchronous input (a MIDI read thread),
+    // post ControlAction::NoteOn/NoteOff/Sustain instead so the change is drained
+    // lock-free inside tick() rather than racing the engine thread.
     void noteOn(uint8_t note) noexcept;
     void noteOff(uint8_t note) noexcept;
+
+    // Sustain pedal (CC64). While down, physical note-offs are deferred: the
+    // released notes stay in the chord set until the pedal is lifted, then all
+    // pending releases are applied at once and detection re-runs.
+    void setSustain(bool on) noexcept;
+    bool sustain() const noexcept { return sustain_; }
 
     // ── Realtime tick: drain control events, drive the player ──────
     void tick() noexcept;
@@ -58,12 +68,16 @@ public:
     performance::VariationManager& variation() noexcept { return var_; }
     performance::SplitRouter&     split() noexcept { return split_; }
     arranger::Chord lastChord() const noexcept { return last_chord_; }
+    int heldCount() const noexcept { return held_count_; }
 
 private:
     void handleControl(const control::ControlEvent& ev) noexcept;
     void startPlayback() noexcept;
     void doPanic() noexcept;
     void redetectChord() noexcept;
+    bool removeHeld(uint8_t note) noexcept;   // returns true if it was held
+    void rememberSustained(uint8_t note) noexcept;
+    void forgetSustained(uint8_t note) noexcept;
 
     realtime::RealtimeClock& clock_;
     arranger::StylePlayer&   player_;
@@ -84,6 +98,12 @@ private:
     static constexpr int kMaxHeld = 16;
     uint8_t held_[kMaxHeld]{};
     int     held_count_{0};
+
+    // Sustain pedal: notes physically released while the pedal is down are kept
+    // in held_ and remembered here until the pedal lifts. Fixed buffer, RT-safe.
+    bool    sustain_{false};
+    uint8_t sustained_[kMaxHeld]{};
+    int     sustained_count_{0};
 };
 
 } // namespace ai_arranger::integration

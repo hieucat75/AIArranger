@@ -22,6 +22,14 @@ enum class ControlAction : uint8_t {
     // Chord intent from the UI: param = root MIDI note | (ChordType << 8).
     // Appended (not reordered) to keep existing values stable.
     Chord,
+    // Raw held-note input from a MIDI keyboard, routed lock-free through the
+    // same SPSC queue as every other control event so an async input thread
+    // (e.g. the CoreMIDI read callback) never touches engine state directly.
+    // NoteOn/NoteOff: param = MIDI note (0-127). Sustain: param = 1 (down)/0 (up).
+    // Appended (not reordered) to keep existing values stable.
+    NoteOn,
+    NoteOff,
+    Sustain,
 };
 
 struct ControlEvent {

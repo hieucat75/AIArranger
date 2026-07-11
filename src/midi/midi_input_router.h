@@ -1,0 +1,61 @@
+#ifndef AI_ARRANGER_MIDI_MIDI_INPUT_ROUTER_H
+#define AI_ARRANGER_MIDI_MIDI_INPUT_ROUTER_H
+
+#include "midi/midi_input_parser.h"
+#include "engine/control/control_events.h"
+#include <cstddef>
+#include <cstdint>
+
+// ── MIDI input router (vendor-neutral) ───────────────────────────────────────
+//
+// Translates parsed MIDI input into ControlEvents posted to a lock-free sink
+// (typically PerformerAdapter::postEvent). Only chord-relevant messages are
+// forwarded:
+//   NoteOn / NoteOff -> held-note input  (ControlAction::NoteOn / NoteOff)
+//   CC64  (sustain)  -> ControlAction::Sustain (param = down/up)
+//   CC123 (all off)  -> ControlAction::Panic
+// Header-only and templated on the sink so it is testable without the engine and
+// callable from a real-time read callback (postEvent is lock-free / non-blocking).
+
+namespace ai_arranger::midi {
+
+inline constexpr uint8_t kCcSustain     = 64;   // CC64  — sustain pedal (hold)
+inline constexpr uint8_t kCcAllNotesOff = 123;  // CC123 — all notes off (panic)
+
+// Route a single parsed message. `Sink` must expose
+// `bool postEvent(const control::ControlEvent&)`.
+template <class Sink>
+inline void routeMidiInput(const MidiInputMessage& m, Sink& sink) {
+    using control::ControlAction;
+    using control::ControlEvent;
+    switch (m.type) {
+        case MidiInMsgType::NoteOn:
+            sink.postEvent(ControlEvent{ControlAction::NoteOn,  m.data1, 0});
+            break;
+        case MidiInMsgType::NoteOff:
+            sink.postEvent(ControlEvent{ControlAction::NoteOff, m.data1, 0});
+            break;
+        case MidiInMsgType::ControlChange:
+            if (m.data1 == kCcSustain)
+                sink.postEvent(ControlEvent{ControlAction::Sustain, m.data2 >= 64 ? 1 : 0, 0});
+            else if (m.data1 == kCcAllNotesOff)
+                sink.postEvent(ControlEvent{ControlAction::Panic, 0, 0});
+            break;
+        case MidiInMsgType::Other:
+            break; // PC / pressure / pitch bend — not chord-relevant
+    }
+}
+
+// Convenience: parse a raw MIDI byte buffer and route every message.
+// Returns the number of parsed messages.
+template <class Sink>
+inline size_t routeMidiBytes(const uint8_t* bytes, size_t len, Sink& sink) {
+    MidiInputMessage buf[64];
+    const size_t n = parseMidiInput(bytes, len, buf, 64);
+    for (size_t i = 0; i < n; ++i) routeMidiInput(buf[i], sink);
+    return n;
+}
+
+} // namespace ai_arranger::midi
+
+#endif // AI_ARRANGER_MIDI_MIDI_INPUT_ROUTER_H
