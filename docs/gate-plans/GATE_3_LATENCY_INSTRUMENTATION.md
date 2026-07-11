@@ -39,7 +39,19 @@ latency by tempo, and latency before/after a hot-plug.
 Correlation: a fresh `correlation_id` is stamped at **chord confirm** (stage 2)
 and carried by stages 3–5, so those group cleanly. The triggering NoteOn (stage
 1) carries the *previous* id, so the report tool pairs each chord with the
-nearest preceding input NoteOn temporally.
+nearest preceding input NoteOn **temporally** (nearest input at-or-before the
+chord confirm — it is *not* correlation-linked).
+
+**Incomplete correlations.** Stages 3–5 share the chord's id, but a *very fast*
+chord change can confirm the next chord before the current chord's accompaniment
+has emitted its first event — the `accomp_first_event` waypoint for that chord is
+then never recorded, so the correlation is **missing a stage**. The report tool
+treats any correlation missing one of chord/accomp/enqueue/send as *incomplete*:
+it is **counted and reported separately and excluded from every percentile** (see
+§6), never silently averaged in as if it were a full journey. This is a
+measurement artifact of temporal correlation, **not** an engine bug — the engine
+logic is unchanged; only if physical-hardware testing later shows a real dropped
+event would that be treated as a defect.
 
 ## 2. Architecture
 
@@ -134,13 +146,39 @@ python3 tools/latency_report/latency_report.py session.json
 python3 tools/latency_report/latency_report.py tools/latency_report/sample_trace.json
 ```
 
+The bundled sample has only 7 journeys, so it deliberately reports
+`INSUFFICIENT_DATA` (< 20 complete samples) — it demonstrates the math and the
+data-sufficiency gate, not a passing run.
+
 It prints per-segment p50/p95/max/jitter, a chord→output histogram, outliers,
-latency by tempo, latency before/after hot-plug, the lifecycle counters, and a
-PASS/FAIL against the thresholds below. Exit code `0` = software PASS, `2` =
-software FAIL. Percentiles use the nearest-rank method (documented in-file).
+latency by tempo, latency before/after hot-plug, the correlation-completeness
+summary, the lifecycle counters, and a verdict against the thresholds below.
+Percentiles use the nearest-rank method (documented in-file).
+
+**Verdict is one of `PASS` / `FAIL` / `INSUFFICIENT_DATA`.** A `PASS` requires
+*all* of:
+
+- clean counters — `dropped_records == 0`, `active_notes == 0` (no stuck notes),
+  `queue_overflows == 0`;
+- every threshold met (§7);
+- **at least `MIN_GATE_SAMPLES` (20) complete chord→output samples** — fewer and
+  the percentiles are not trustworthy, so the verdict is `INSUFFICIENT_DATA`,
+  never `PASS`;
+- **no more than `MAX_INCOMPLETE_FRACTION` (5%) of correlations incomplete** —
+  incomplete correlations (a stage missing, e.g. a dropped `accomp_first_event`
+  from a fast chord change) are counted and reported but excluded from the
+  percentiles; if too large a share is incomplete the surviving percentiles are
+  not representative and the verdict is downgraded to `INSUFFICIENT_DATA`.
+
+A definite breach (threshold exceeded, or a bad counter such as
+`dropped_records > 0`) yields `FAIL`. Thin or incomplete data yields
+`INSUFFICIENT_DATA`. Exit code `0` = `PASS`, `2` = `FAIL` or `INSUFFICIENT_DATA`
+(never a silent pass on insufficient data).
 
 Unit test: `python3 tools/latency_report/test_latency_report.py` (asserts the math
-on the sample). Ring/tracer unit test: the C++ `test_latency_trace_ring` target.
+on the sample plus the sample-count boundary 0/1/19/20 and incomplete-correlation
+handling). Ring/tracer unit test: the C++ `test_latency_trace_ring` target (which
+also covers the off-RT `LatencyTracer::warmup()` counter-reset).
 
 ## 7. Provisional Gate-3 thresholds
 
