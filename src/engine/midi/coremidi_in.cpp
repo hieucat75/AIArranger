@@ -1,4 +1,5 @@
 #include "engine/midi/coremidi_in.h"
+#include "engine/trace/latency_trace.h"
 
 #include <thread>
 
@@ -146,7 +147,16 @@ void CoreMidiIn::readProc(const MIDIPacketList* pktList, void* readRefCon, void*
             for (UInt32 i = 0; i < pktList->numPackets; ++i) {
                 MidiInputMessage msgs[64];
                 const size_t n = parseMidiInput(pkt->data, pkt->length, msgs, 64);
-                for (size_t j = 0; j < n; ++j) self->sink_(msgs[j]);
+                for (size_t j = 0; j < n; ++j) {
+                    // Trace point (1): CoreMIDI input received a NoteOn. Compiled
+                    // out entirely when AIARR_LATENCY_TRACE is off; when on it is a
+                    // wait-free ring push, adding no work to the sink path itself.
+                    if (msgs[j].type == MidiInMsgType::NoteOn) {
+                        AIARR_TRACE_INPUT_NOTEON(msgs[j].channel, msgs[j].data1,
+                                                 msgs[j].data2);
+                    }
+                    self->sink_(msgs[j]);
+                }
                 self->received_.fetch_add(n, std::memory_order_relaxed);
                 pkt = MIDIPacketNext(pkt);
             }

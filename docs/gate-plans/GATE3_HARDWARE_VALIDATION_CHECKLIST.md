@@ -27,6 +27,12 @@ A single stuck note, crash, deadlock, dropped callback, or audible timing drift 
    - Pass: accompaniment plays on the module; the detected chord shown in the UI matches what is played; changing chord re-voices within one bar; no stuck notes.
 2. **Chord-to-output latency.**
    - Do: play a chord; measure time from key-down to first accompaniment note at the output (MIDI monitor timestamps or audio capture). Repeat ≥20 times.
+     Optionally build with `-DAIARR_LATENCY_TRACE=ON` and capture the software
+     trace in parallel (see
+     [GATE_3_LATENCY_INSTRUMENTATION.md](GATE_3_LATENCY_INSTRUMENTATION.md)); run
+     `tools/latency_report/latency_report.py` on the export for p50/p95/max +
+     stuck-note counters. **The software report is a cross-check, not the pass
+     itself** — the audible measurement here is authoritative.
    - Pass: median latency within the target budget (record the number); no pathological outliers (> 30 ms) beyond occasional scheduler granularity.
 3. **Multiple tempos.**
    - Do: run at ~60, ~120, ~200+ BPM; change tempo mid-playback via the slider.

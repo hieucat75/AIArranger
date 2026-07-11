@@ -1,0 +1,64 @@
+{
+  "counters": {
+    "input_callbacks": 7,
+    "output_events": 7,
+    "midi_sends": 7,
+    "dropped_records": 0,
+    "active_notes": 0,
+    "panics": 1,
+    "reconnects": 1,
+    "queue_overflows": 0,
+    "late_ticks": 0
+  },
+  "records": [
+    {"timestamp_ns": 500000000, "correlation_id": 0, "stage": "lifecycle", "channel": 255, "note": 255, "velocity": 255, "chord_root": 255, "chord_type": 255, "section": 0, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "start"},
+
+    {"timestamp_ns": 1000000000, "correlation_id": 0, "stage": "input_note_on", "channel": 0, "note": 60, "velocity": 100, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 1003000000, "correlation_id": 1, "stage": "chord_confirmed", "channel": 255, "note": 255, "velocity": 255, "chord_root": 60, "chord_type": 0, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "chord_change"},
+    {"timestamp_ns": 1007000000, "correlation_id": 1, "stage": "accomp_first_event", "channel": 1, "note": 48, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 1008000000, "correlation_id": 1, "stage": "output_enqueue", "channel": 1, "note": 48, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 1011000000, "correlation_id": 1, "stage": "midi_send", "channel": 1, "note": 48, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+
+    {"timestamp_ns": 2000000000, "correlation_id": 0, "stage": "input_note_on", "channel": 0, "note": 62, "velocity": 101, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 2003000000, "correlation_id": 2, "stage": "chord_confirmed", "channel": 255, "note": 255, "velocity": 255, "chord_root": 62, "chord_type": 0, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "chord_change"},
+    {"timestamp_ns": 2007000000, "correlation_id": 2, "stage": "accomp_first_event", "channel": 1, "note": 50, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 2008000000, "correlation_id": 2, "stage": "output_enqueue", "channel": 1, "note": 50, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 2012000000, "correlation_id": 2, "stage": "midi_send", "channel": 1, "note": 50, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+
+    {"timestamp_ns": 3000000000, "correlation_id": 0, "stage": "input_note_on", "channel": 0, "note": 64, "velocity": 99, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 3003000000, "correlation_id": 3, "stage": "chord_confirmed", "channel": 255, "note": 255, "velocity": 255, "chord_root": 64, "chord_type": 0, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "chord_change"},
+    {"timestamp_ns": 3007000000, "correlation_id": 3, "stage": "accomp_first_event", "channel": 1, "note": 52, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 3008000000, "correlation_id": 3, "stage": "output_enqueue", "channel": 1, "note": 52, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 3013000000, "correlation_id": 3, "stage": "midi_send", "channel": 1, "note": 52, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+
+    {"timestamp_ns": 4000000000, "correlation_id": 0, "stage": "input_note_on", "channel": 0, "note": 65, "velocity": 98, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 4003000000, "correlation_id": 4, "stage": "chord_confirmed", "channel": 255, "note": 255, "velocity": 255, "chord_root": 65, "chord_type": 0, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "chord_change"},
+    {"timestamp_ns": 4007000000, "correlation_id": 4, "stage": "accomp_first_event", "channel": 1, "note": 53, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 4008000000, "correlation_id": 4, "stage": "output_enqueue", "channel": 1, "note": 53, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 4015000000, "correlation_id": 4, "stage": "midi_send", "channel": 1, "note": 53, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+
+    {"timestamp_ns": 5000000000, "correlation_id": 0, "stage": "input_note_on", "channel": 0, "note": 67, "velocity": 97, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 5003000000, "correlation_id": 5, "stage": "chord_confirmed", "channel": 255, "note": 255, "velocity": 255, "chord_root": 67, "chord_type": 0, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "chord_change"},
+    {"timestamp_ns": 5007000000, "correlation_id": 5, "stage": "accomp_first_event", "channel": 1, "note": 55, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 5008000000, "correlation_id": 5, "stage": "output_enqueue", "channel": 1, "note": 55, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+    {"timestamp_ns": 5023000000, "correlation_id": 5, "stage": "midi_send", "channel": 1, "note": 55, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 1, "lifecycle_tag": "none"},
+
+    {"timestamp_ns": 5500000000, "correlation_id": 0, "stage": "lifecycle", "channel": 255, "note": 255, "velocity": 255, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 120, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "hotplug_add"},
+
+    {"timestamp_ns": 6000000000, "correlation_id": 0, "stage": "input_note_on", "channel": 0, "note": 60, "velocity": 96, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 90, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "none"},
+    {"timestamp_ns": 6003000000, "correlation_id": 6, "stage": "chord_confirmed", "channel": 255, "note": 255, "velocity": 255, "chord_root": 62, "chord_type": 1, "section": 1, "tempo_bpm": 90, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "chord_change"},
+    {"timestamp_ns": 6007000000, "correlation_id": 6, "stage": "accomp_first_event", "channel": 1, "note": 50, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 90, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "none"},
+    {"timestamp_ns": 6008000000, "correlation_id": 6, "stage": "output_enqueue", "channel": 1, "note": 50, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 90, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "none"},
+    {"timestamp_ns": 6014000000, "correlation_id": 6, "stage": "midi_send", "channel": 1, "note": 50, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 90, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "none"},
+
+    {"timestamp_ns": 7000000000, "correlation_id": 0, "stage": "input_note_on", "channel": 0, "note": 64, "velocity": 95, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 90, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "none"},
+    {"timestamp_ns": 7003000000, "correlation_id": 7, "stage": "chord_confirmed", "channel": 255, "note": 255, "velocity": 255, "chord_root": 64, "chord_type": 1, "section": 1, "tempo_bpm": 90, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "chord_change"},
+    {"timestamp_ns": 7007000000, "correlation_id": 7, "stage": "accomp_first_event", "channel": 1, "note": 52, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 90, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "none"},
+    {"timestamp_ns": 7008000000, "correlation_id": 7, "stage": "output_enqueue", "channel": 1, "note": 52, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 90, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "none"},
+    {"timestamp_ns": 7016000000, "correlation_id": 7, "stage": "midi_send", "channel": 1, "note": 52, "velocity": 90, "chord_root": 255, "chord_type": 255, "section": 1, "tempo_bpm": 90, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "none"},
+
+    {"timestamp_ns": 7800000000, "correlation_id": 0, "stage": "lifecycle", "channel": 255, "note": 255, "velocity": 255, "chord_root": 255, "chord_type": 255, "section": 2, "tempo_bpm": 90, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "section_switch"},
+    {"timestamp_ns": 8000000000, "correlation_id": 0, "stage": "lifecycle", "channel": 255, "note": 255, "velocity": 255, "chord_root": 255, "chord_type": 255, "section": 2, "tempo_bpm": 90, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "stop"},
+    {"timestamp_ns": 8500000000, "correlation_id": 0, "stage": "lifecycle", "channel": 255, "note": 255, "velocity": 255, "chord_root": 255, "chord_type": 255, "section": 2, "tempo_bpm": 90, "input_device_id": 1, "output_device_id": 2, "lifecycle_tag": "panic"}
+  ]
+}
