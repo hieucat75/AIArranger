@@ -18,6 +18,7 @@ find_package(Threads REQUIRED)
 file(GLOB_RECURSE ENGINE_SRC
     src/engine/realtime/*.cpp
     src/engine/midi/*.cpp
+    src/engine/trace/*.cpp
     src/engine/arranger/*.cpp
     src/engine/uasf/*.cpp
     src/engine/music/*.cpp
@@ -48,6 +49,17 @@ list(REMOVE_ITEM ENGINE_SRC ${PLATFORM_APPLE_SRC})
 add_library(arranger-engine STATIC ${ENGINE_SRC})
 target_include_directories(arranger-engine PUBLIC src)
 target_link_libraries(arranger-engine PUBLIC Threads::Threads)
+
+# ── Gate 3 latency trace harness (default OFF — production zero-overhead) ──
+# When OFF, every AIARR_TRACE_* macro compiles to nothing, no ring is allocated,
+# and no trace symbols are emitted. Turn on for measurement with:
+#     cmake -DAIARR_LATENCY_TRACE=ON ...
+# PUBLIC so the platform layer, tests, tools, and the app all see the same gate.
+option(AIARR_LATENCY_TRACE "Enable Gate 3 RT-safe latency trace harness" OFF)
+if(AIARR_LATENCY_TRACE)
+    target_compile_definitions(arranger-engine PUBLIC AIARR_LATENCY_TRACE)
+    message(STATUS "AIArranger: latency trace harness ENABLED (AIARR_LATENCY_TRACE)")
+endif()
 
 # ── Apple platform layer (CoreMIDI / CoreAudio adapters) ──────────────
 # Isolates every direct Apple-framework dependency. The core sees only the
@@ -100,6 +112,18 @@ foreach(test_file ${SHELL_TEST_SRC})
     get_filename_component(test_name ${test_file} NAME_WE)
     add_executable(${test_name} ${test_file})
     target_link_libraries(${test_name} platform-apple arranger-engine Threads::Threads)
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endforeach()
+
+# ── Gate 3 latency trace harness tests ────────────────────────────────
+# The MPSC ring is a generic container and is exercised in BOTH build modes;
+# tracer/collector assertions are guarded by AIARR_TRACE_ENABLED inside the test
+# so the suite passes whether the harness is compiled in or out.
+file(GLOB TRACE_TEST_SRC tests/trace/*.cpp)
+foreach(test_file ${TRACE_TEST_SRC})
+    get_filename_component(test_name ${test_file} NAME_WE)
+    add_executable(${test_name} ${test_file})
+    target_link_libraries(${test_name} arranger-engine Threads::Threads)
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
 
