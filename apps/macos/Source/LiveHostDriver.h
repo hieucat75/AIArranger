@@ -11,10 +11,14 @@
 //   - hiResTimerCallback() (this timer thread) is the SOLE producer of the
 //     engine's control queue. It drains the facade's two SPSC queues (UI + MIDI
 //     input) inside tick(), advances the engine, and pumps output.
-//   - The UI thread posts commands via facade() (lock-free) and reads snapshot().
+//   - The UI thread posts commands via facade() (lock-free SPSC) and reads a
+//     thread-safe atomic snapshot().
 //   - The CoreMIDI read thread routes messages onto the facade's input queue.
 //
-// No malloc / lock / ObjC in the timer callback or the CoreMIDI read callback.
+// No malloc / ObjC in the timer callback or the CoreMIDI read callback. The tick's
+// snapshot publish uses std::atomic<EngineSnapshot>, which is mutex-backed for this
+// size (not lock-free) — a brief bounded lock, fine on this MIDI-only 1 ms timer
+// (not the audio render thread).
 
 #include <juce_core/juce_core.h>
 #include "session/live_engine_facade.h"
@@ -41,9 +45,17 @@ public:
 
     void stop() {
         if (!running_) return;
-        stopTimer();
+        stopTimer();   // tick thread quiesced: engine is single-threaded here now
+        // Silence the output device SYNCHRONOUSLY before detaching MIDI, so closing
+        // while playing never leaves hanging notes. panic() = all-sound-off (CC120)
+        // per active channel + clock stop; tick(0) drains+pumps it onto the output
+        // queue now (with the tick thread stopped, enqueuing Stop alone would never
+        // be pumped). CoreMidiOut::shutdown() then drains that queue before joining,
+        // so the CC120 reaches the endpoint before the port is disposed.
+        facade_.panic();
+        facade_.tick(0);
         // N1 (review #27): disconnect the CoreMIDI source BEFORE the facade clears
-        // the input sink, so no read-thread callback races a half-cleared sink.
+        // the input sink (the sink teardown itself now also drains in-flight reads).
         midi_in_.selectSource(-1);
         facade_.stop();
         midi_in_.shutdown();
@@ -76,9 +88,28 @@ public:
         // transport left stopped; tick restarts via guard.
     }
 
+    // Switch the MIDI output safely while the engine may be running. Quiesce the
+    // tick thread, then panic (all-sound-off + clear the engine's active-note
+    // tracking so no leftover note-off later targets the NEW device) and stop the
+    // transport, then repoint the output — selectDestination() silences the OLD
+    // device synchronously first, so its all-notes-off never leaks to the new one.
+    // Transport is left stopped after the switch (press Start to resume).
+    void switchOutput(int index) {
+        if (!running_) {                 // no tick thread yet: plain select
+            facade_.selectMidiOutput(index);
+            return;
+        }
+        stopTimer();                     // quiesce: waits for the in-flight tick
+        struct TickGuard { LiveHostDriver* d; ~TickGuard() { d->restartTick(); } } guard{this};
+        facade_.panic();                 // stop + all-sound-off + clear active notes …
+        facade_.tick(0);                 // … applied now on the quiesced engine
+        facade_.selectMidiOutput(index); // silences old device, then attaches new
+        // transport left stopped; tick restarts via guard.
+    }
+
     // ── Accessors for the UI ──────────────────────────────────────────
-    // Commands are posted and the snapshot is read through the facade (lock-free);
-    // enumeration is read straight off the platform adapters.
+    // Commands are posted lock-free; the snapshot is read through the facade as a
+    // thread-safe atomic; enumeration is read straight off the platform adapters.
     session::LiveEngineFacade&    facade()  noexcept { return facade_; }
     midi::CoreMidiIn&             midiIn()  noexcept { return midi_in_; }
     midi::CoreMidiOutputProvider& midiOut() noexcept { return midi_out_; }

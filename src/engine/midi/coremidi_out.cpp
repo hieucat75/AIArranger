@@ -132,20 +132,31 @@ std::vector<MidiDestinationInfo> CoreMidiOut::enumerateDestinations() const noex
 }
 
 bool CoreMidiOut::selectDestination(int index) noexcept {
+    // Silence the OUTGOING device synchronously before repointing, so a switch (or
+    // disconnect) never leaves it with hanging notes and its all-sound-off is never
+    // sent to the newly selected device. Validate first so a failed switch leaves
+    // both the old device and the current selection untouched.
     if (index < 0) {
+        MIDIEndpointRef old = endpoint_.exchange(0, std::memory_order_acq_rel);
+        if (old != 0) sendAllSoundOff(old);
         {
             std::lock_guard<std::mutex> lk(nameMutex());
             selected_name_.clear();
         }
         selected_index_.store(-1, std::memory_order_release);
-        endpoint_.store(0, std::memory_order_release);
         return true;
     }
     ItemCount n = MIDIGetNumberOfDestinations();
     if (static_cast<ItemCount>(index) >= n) return false;
 
     MIDIEndpointRef ep = MIDIGetDestination(static_cast<ItemCount>(index));
+    // Device vanished between enumeration and selection: fail the switch cleanly
+    // rather than repointing to endpoint 0 (which would silence the old device and
+    // leave a half-switched state with selected_index_ set but no live endpoint).
+    if (ep == 0) return false;
     std::string name = endpointDisplayName(ep);
+    MIDIEndpointRef old = endpoint_.load(std::memory_order_acquire);
+    if (old != 0 && old != ep) sendAllSoundOff(old);
     {
         std::lock_guard<std::mutex> lk(nameMutex());
         selected_name_ = name;
@@ -153,6 +164,21 @@ bool CoreMidiOut::selectDestination(int index) noexcept {
     selected_index_.store(index, std::memory_order_release);
     endpoint_.store(ep, std::memory_order_release);
     return true;
+}
+
+void CoreMidiOut::sendAllSoundOff(MIDIEndpointRef ep) noexcept {
+    if (ep == 0 || out_port_ == 0) return;
+    for (uint8_t ch = 0; ch < 16; ++ch) {
+        const uint8_t ctrls[2] = {123 /*All Notes Off*/, 120 /*All Sound Off*/};
+        for (uint8_t cc : ctrls) {
+            uint8_t bytes[3] = {static_cast<uint8_t>(0xB0 | ch), cc, 0};
+            uint8_t listBuf[64];
+            MIDIPacketList* pl = reinterpret_cast<MIDIPacketList*>(listBuf);
+            MIDIPacket* pkt = MIDIPacketListInit(pl);
+            pkt = MIDIPacketListAdd(pl, sizeof(listBuf), pkt, /*timestamp=*/0, 3, bytes);
+            if (pkt) MIDISend(out_port_, ep, pl);
+        }
+    }
 }
 
 int CoreMidiOut::selectedDestination() const noexcept {
@@ -235,8 +261,6 @@ void CoreMidiOut::dispatchLoop() noexcept {
     constexpr int kProbeEvery = 400;
     int idleTicks = 0;
 
-    uint8_t listBuf[256];
-
     while (running_.load(std::memory_order_acquire)) {
         // Hotplug: explicit notification, or periodic probe when disconnected.
         bool wantResolve = needs_reresolve_.exchange(false, std::memory_order_acq_rel);
@@ -248,33 +272,41 @@ void CoreMidiOut::dispatchLoop() noexcept {
 
         uasf::MidiEvent ev;
         bool any = false;
-        while (queue_.pop(ev)) {
-            any = true;
-            dispatched_count_.fetch_add(1, std::memory_order_relaxed);
-
-            if (dispatch_tap_) dispatch_tap_(ev);
-
-            MIDIEndpointRef ep = endpoint_.load(std::memory_order_acquire);
-            if (ep == 0) {
-                // Graceful no-op: nowhere to send (headless / disconnected).
-                dropped_count_.fetch_add(1, std::memory_order_relaxed);
-                continue;
-            }
-
-            uint8_t bytes[3];
-            size_t nbytes = midiEventToBytes(ev, bytes);
-            if (nbytes == 0) continue;
-
-            MIDIPacketList* pktList = reinterpret_cast<MIDIPacketList*>(listBuf);
-            MIDIPacket* pkt = MIDIPacketListInit(pktList);
-            pkt = MIDIPacketListAdd(pktList, sizeof(listBuf), pkt,
-                                    /*timestamp=*/0, nbytes, bytes);
-            if (pkt && MIDISend(out_port_, ep, pktList) == noErr) {
-                sent_count_.fetch_add(1, std::memory_order_relaxed);
-            }
-        }
+        while (queue_.pop(ev)) { any = true; dispatchOne(ev); }
 
         if (!any) std::this_thread::sleep_for(kIdleSleep);
+    }
+
+    // Final drain: send anything still queued (e.g. a close-time all-sound-off /
+    // note-off flush) to the still-valid endpoint before shutdown() disposes the
+    // port, so stopping the thread never truncates queued events on the wire.
+    uasf::MidiEvent ev;
+    while (queue_.pop(ev)) dispatchOne(ev);
+}
+
+void CoreMidiOut::dispatchOne(const uasf::MidiEvent& ev) noexcept {
+    dispatched_count_.fetch_add(1, std::memory_order_relaxed);
+
+    if (dispatch_tap_) dispatch_tap_(ev);
+
+    MIDIEndpointRef ep = endpoint_.load(std::memory_order_acquire);
+    if (ep == 0) {
+        // Graceful no-op: nowhere to send (headless / disconnected).
+        dropped_count_.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+
+    uint8_t bytes[3];
+    size_t nbytes = midiEventToBytes(ev, bytes);
+    if (nbytes == 0) return;
+
+    uint8_t listBuf[256];
+    MIDIPacketList* pktList = reinterpret_cast<MIDIPacketList*>(listBuf);
+    MIDIPacket* pkt = MIDIPacketListInit(pktList);
+    pkt = MIDIPacketListAdd(pktList, sizeof(listBuf), pkt,
+                            /*timestamp=*/0, nbytes, bytes);
+    if (pkt && MIDISend(out_port_, ep, pktList) == noErr) {
+        sent_count_.fetch_add(1, std::memory_order_relaxed);
     }
 }
 

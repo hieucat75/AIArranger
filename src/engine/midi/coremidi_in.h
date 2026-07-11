@@ -52,7 +52,14 @@ public:
     bool hasLiveSource() const noexcept override;
 
     // Invoked for every parsed message on the read thread. Set before selecting.
-    void setSink(MessageSink sink) noexcept override { sink_ = std::move(sink); }
+    // Swapping the sink first stops delivery (accepting_ = false) and BLOCKS until
+    // any in-flight readProc has returned (quiesceReadCallback), so the read thread
+    // can never touch a std::function target that is being destroyed underneath it.
+    void setSink(MessageSink sink) noexcept override {
+        quiesceReadCallback();
+        sink_ = std::move(sink);
+        accepting_.store(sink_ != nullptr, std::memory_order_release);
+    }
 
     uint64_t receivedCount() const noexcept override {
         return received_.load(std::memory_order_relaxed);
@@ -62,6 +69,12 @@ private:
     static void readProc(const MIDIPacketList* pktList, void* readRefCon, void* srcRefCon);
     static void notifyProc(const MIDINotification* msg, void* refCon);
 
+    // Stop sink delivery and spin until any in-flight readProc has returned. Call
+    // on a non-realtime thread before destroying/replacing the sink or disposing
+    // the port — MIDIPortDisconnectSource does NOT join in-flight read callbacks,
+    // so this is what actually guarantees the read thread is out of the sink.
+    void quiesceReadCallback() noexcept;
+
     MIDIClientRef                client_{0};
     MIDIPortRef                  in_port_{0};
     std::atomic<MIDIEndpointRef> source_{0};   // 0 = none/disconnected
@@ -69,6 +82,8 @@ private:
     std::atomic<int>             selected_index_{-1};
 
     MessageSink                  sink_{nullptr};
+    std::atomic<bool>            accepting_{false}; // true only while sink_ is live
+    std::atomic<int>             in_flight_{0};     // readProc invocations in progress
     std::atomic<uint64_t>        received_{0};
     std::atomic<bool>            initialized_{false};
 };

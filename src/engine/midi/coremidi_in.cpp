@@ -1,5 +1,7 @@
 #include "engine/midi/coremidi_in.h"
 
+#include <thread>
+
 // The MIDIPacketList / MIDIPacketNext read-callback API is deprecated in favour
 // of MIDIEventList, but remains fully functional and is simpler for a single
 // input port. Silence the deprecation noise locally (matches coremidi_out.cpp).
@@ -56,6 +58,9 @@ void CoreMidiIn::shutdown() noexcept {
     // Disconnect any live source before tearing the port down.
     MIDIEndpointRef ep = source_.exchange(0, std::memory_order_acq_rel);
     if (ep != 0 && in_port_ != 0) MIDIPortDisconnectSource(in_port_, ep);
+    // Source disconnected but MIDIPortDisconnectSource does not join an in-flight
+    // readProc — wait it out before disposing the port so no callback survives it.
+    quiesceReadCallback();
     if (in_port_) { MIDIPortDispose(in_port_); in_port_ = 0; }
     if (client_)  { MIDIClientDispose(client_); client_ = 0; }
     selected_index_.store(-1, std::memory_order_release);
@@ -118,15 +123,53 @@ void CoreMidiIn::readProc(const MIDIPacketList* pktList, void* readRefCon, void*
     auto* self = static_cast<CoreMidiIn*>(readRefCon);
     if (!self || !pktList) return;
 
-    const MIDIPacket* pkt = &pktList->packet[0];
-    for (UInt32 i = 0; i < pktList->numPackets; ++i) {
-        MidiInputMessage msgs[64];
-        const size_t n = parseMidiInput(pkt->data, pkt->length, msgs, 64);
-        if (self->sink_) {
-            for (size_t j = 0; j < n; ++j) self->sink_(msgs[j]);
+    // Enter the guarded region BEFORE touching sink_. quiesceReadCallback() clears
+    // accepting_ then waits for in_flight_ to hit 0, so once it returns the sink is
+    // provably idle and safe to destroy. Ordering: increment → re-check accepting_
+    // → use sink_ → decrement (the decrement always runs, even when not accepting).
+    self->in_flight_.fetch_add(1, std::memory_order_acquire);
+    // StoreLoad barrier: this increment + the accepting_ load below, paired against
+    // quiesceReadCallback()'s accepting_ store + in_flight_ load, form a store-buffer
+    // (Dekker) pattern. Acquire/release alone permits BOTH sides to read stale — the
+    // reader seeing accepting_==true while the writer sees in_flight_==0 — which would
+    // let quiesce return and the caller destroy sink_ underneath this callback (UAF on
+    // the Apple Silicon / ARM64 target; x86 masks it via the lock-prefixed RMW). The
+    // matching seq_cst fences here and in quiesceReadCallback() forbid that outcome.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    // The sink is user-supplied. A throw from it must neither skip the in_flight_
+    // decrement below (that would wedge quiesceReadCallback()'s spin forever) nor
+    // unwind across this C callback back into CoreMIDI (undefined behaviour). Swallow
+    // it so the decrement always runs and the read thread stays live.
+    try {
+        if (self->accepting_.load(std::memory_order_acquire) && self->sink_) {
+            const MIDIPacket* pkt = &pktList->packet[0];
+            for (UInt32 i = 0; i < pktList->numPackets; ++i) {
+                MidiInputMessage msgs[64];
+                const size_t n = parseMidiInput(pkt->data, pkt->length, msgs, 64);
+                for (size_t j = 0; j < n; ++j) self->sink_(msgs[j]);
+                self->received_.fetch_add(n, std::memory_order_relaxed);
+                pkt = MIDIPacketNext(pkt);
+            }
         }
-        self->received_.fetch_add(n, std::memory_order_relaxed);
-        pkt = MIDIPacketNext(pkt);
+    } catch (...) {
+        // A MIDI read callback must never propagate an exception.
+    }
+    self->in_flight_.fetch_sub(1, std::memory_order_release);
+}
+
+void CoreMidiIn::quiesceReadCallback() noexcept {
+    // Stop new deliveries, then wait for any readProc already past the accepting_
+    // check to exit. Bounded and brief (readProc does no malloc/lock). Runs only on
+    // non-realtime threads (setSink / shutdown), never on the read thread itself,
+    // so this never deadlocks against its own callback.
+    accepting_.store(false, std::memory_order_release);
+    // Matching half of the store-buffer barrier in readProc: force this accepting_
+    // store to be globally ordered before the in_flight_ load, so we can never read
+    // in_flight_==0 while a readProc that already saw accepting_==true is still in the
+    // sink. Without it, acquire/release permits that stale-stale outcome on ARM64.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    while (in_flight_.load(std::memory_order_acquire) != 0) {
+        std::this_thread::yield();
     }
 }
 
