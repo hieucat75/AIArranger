@@ -106,6 +106,16 @@ void PerformerAdapter::tick() noexcept {
     control::ControlEvent ev;
     while (queue_.pop(ev)) handleControl(ev);
 
+    // Chord release latch (hold-mode OFF): once the keys have stayed released
+    // past the debounce window, clear the chord to NoChord (a re-press before the
+    // deadline cancelled it in redetectChord()).
+    if (latch_pending_ &&
+        clock_.getSamplePosition() >= latch_deadline_samples_) {
+        latch_pending_ = false;
+        last_chord_ = arranger::Chord{arranger::ChordType::NoChord, 0, 0, 0};
+        player_.setChord(last_chord_);
+    }
+
     // Keep performer module bookkeeping coherent with the sequencer's own
     // bar-boundary resolution (clears pending intent; sequencer is the authority).
     fill_.onBarBoundary();
@@ -177,21 +187,36 @@ void PerformerAdapter::forgetSustained(uint8_t note) noexcept {
 }
 
 void PerformerAdapter::redetectChord() noexcept {
-    if (!scan_ || held_count_ == 0) return;
-    arranger::Chord c = scan_->detect(held_, static_cast<size_t>(held_count_));
-    // Manual-bass override: the lowest held lower-zone note becomes the chord
-    // bass (slash). Routing only — no engine-core change.
-    const uint8_t mb = split_.manualBassNote(held_, static_cast<size_t>(held_count_));
-    if (mb != performance::kNoManualBass) c.bass = mb;
-    last_chord_ = c;
-    if (c.type == arranger::ChordType::NoChord) return;
-
-    // Sync start: first chord while armed fires playback.
-    if (sync_.isArmed() && sync_.onChordPresent()) {
-        sm_.apply(performance::PerformerInput::ChordDetected);
-        player_.start(0);
+    if (!scan_) return;
+    arranger::Chord c{arranger::ChordType::NoChord, 0, 0, 0};
+    if (held_count_ > 0) {
+        c = scan_->detect(held_, static_cast<size_t>(held_count_));
+        // Manual-bass override: the lowest held lower-zone note becomes the chord
+        // bass (slash). Routing only — no engine-core change.
+        const uint8_t mb = split_.manualBassNote(held_, static_cast<size_t>(held_count_));
+        if (mb != performance::kNoManualBass) c.bass = mb;
     }
-    player_.setChord(c);
+
+    if (c.type != arranger::ChordType::NoChord) {
+        // A valid chord: apply immediately and cancel any pending release latch.
+        latch_pending_ = false;
+        last_chord_ = c;
+        // Sync start: first chord while armed fires playback.
+        if (sync_.isArmed() && sync_.onChordPresent()) {
+            sm_.apply(performance::PerformerInput::ChordDetected);
+            player_.start(0);
+        }
+        player_.setChord(c);
+        return;
+    }
+
+    // No valid chord (all keys released, or an unrecognised transient set).
+    if (hold_mode_) return;                 // keep the last chord (arranger memory)
+    if (!latch_pending_) {                   // arm the release debounce (hold OFF)
+        latch_pending_ = true;
+        latch_deadline_samples_ = clock_.getSamplePosition() +
+            static_cast<int64_t>(clock_.getSampleRate()) * static_cast<int64_t>(latch_ms_) / 1000;
+    }
 }
 
 } // namespace ai_arranger::integration
