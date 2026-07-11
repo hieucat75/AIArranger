@@ -86,7 +86,7 @@ bool LatencyTracer::drainOne(TraceRecord& out) noexcept {
     return impl().ring.try_pop(out);
 }
 
-void LatencyTracer::reset() noexcept {
+void LatencyTracer::reset(bool preserveActiveNotes) noexcept {
     // Drain any residue, then zero the counters + correlation state. Not RT-safe:
     // intended for tests / between measurement runs when no producer is live.
     TraceRecord scratch;
@@ -95,7 +95,11 @@ void LatencyTracer::reset() noexcept {
     counters_.output_events.store(0, std::memory_order_relaxed);
     counters_.midi_sends.store(0, std::memory_order_relaxed);
     counters_.dropped_records.store(0, std::memory_order_relaxed);
-    counters_.active_notes.store(0, std::memory_order_relaxed);
+    // active_notes is a live gauge (physically sounding notes), not a per-capture
+    // count — a warm-up at capture start must not zero it out from under held
+    // notes, or their later NoteOff drives it negative → a false stuck-note FAIL.
+    if (!preserveActiveNotes)
+        counters_.active_notes.store(0, std::memory_order_relaxed);
     counters_.panics.store(0, std::memory_order_relaxed);
     counters_.reconnects.store(0, std::memory_order_relaxed);
     counters_.queue_overflows.store(0, std::memory_order_relaxed);
@@ -103,6 +107,25 @@ void LatencyTracer::reset() noexcept {
     correlation_.store(0, std::memory_order_relaxed);
     correlation_seq_.store(0, std::memory_order_relaxed);
     accomp_correlation_.store(0, std::memory_order_relaxed);
+}
+
+void LatencyTracer::warmup() noexcept {
+    // Warm-up only makes sense when the runtime gate is on; when it is off this is
+    // a pure no-op so a disabled build keeps its zero-overhead startup.
+    if (!enabled_.load(std::memory_order_relaxed)) return;
+
+    // Push one throwaway record through the REAL emit path. This does the two
+    // first-time-only jobs off the RT thread: (1) it calls traceNowNs(), forcing
+    // the mach_timebase magic-static's one-time initialization, and (2) it touches
+    // impl().ring, forcing the ~2 MB ring's lazy construction and first-touch of
+    // its backing pages. Doing them here means the first real sample after capture
+    // starts never pays that cost on the audio/read/dispatch thread.
+    emit(TraceStage::Lifecycle, kNa, kNa, kNa, kNa, kNa, LifecycleTag::kNone);
+
+    // Discard the warm-up record and zero the session counters/correlation so
+    // nothing from warm-up enters a measurement report — but preserve the live
+    // active_notes gauge (see reset()).
+    reset(/*preserveActiveNotes=*/true);
 }
 
 LatencyTracer& tracer() noexcept {

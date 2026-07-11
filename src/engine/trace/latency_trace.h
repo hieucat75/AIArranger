@@ -96,8 +96,20 @@ public:
     bool drainOne(TraceRecord& out) noexcept;
 
     // Reset ring + counters (tests / between measurement runs). NOT RT-safe;
-    // call only when no producer is active.
-    void reset() noexcept;
+    // call only when no producer is active. When preserveActiveNotes is true the
+    // live active_notes gauge is left untouched — it mirrors physically sounding
+    // notes (engine NoteOn/NoteOff), not a per-capture count, so clearing it while
+    // notes are held would desync it and manufacture a false stuck-note reading.
+    void reset(bool preserveActiveNotes = false) noexcept;
+
+    // Prime the trace facility from a NON-RT startup path, before capture begins,
+    // so the first real sample never pays a one-time cost on the RT thread. It
+    // warms the trace clock's mach_timebase magic-static and forces the ~2 MB
+    // ring's lazy construction + first-touch, then clears warm-up residue via
+    // reset(preserveActiveNotes=true) — session counters + ring are zeroed but the
+    // live active_notes gauge is preserved. A no-op when the runtime gate is off,
+    // so a disabled build keeps its zero-overhead startup. NOT RT-safe.
+    void warmup() noexcept;
 
 private:
     // Defined in latency_trace.cpp so the large ring lives in one TU.
