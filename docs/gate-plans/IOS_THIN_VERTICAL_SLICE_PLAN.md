@@ -1,8 +1,16 @@
 # iOS Thin Vertical Slice — Implementation Plan
 
-> Direction: **A — iOS-first** (PTH, 2026-07-11). Build the *thinnest* end-to-end
-> live loop on real iPad hardware, not a broad SwiftUI app. Depends on the
-> MIDI-input slice (PR #26).
+> **⏸ DEFERRED TO GATE 5 (PTH, 2026-07-11 update).** Direction refined to
+> **Mac-first engine / iPad-first product**: the engine live loop is proven on the
+> macOS reference host (Gates 2–4) *before* any iPad SwiftUI work. This plan is
+> retained as the Gate-5 blueprint; the portable-core split + `LiveEngineFacade`
+> it prescribed are already landed and feed Gate 4. Do not start Swift/Xcode/
+> signing until Gates 2–4 pass. See `PROJECT_REVIEW_AND_CONTINUATION_PLAN.md`
+> §"Direction update" and `GATE_2_MAC_REFERENCE_HOST_PLAN.md`.
+
+> Original framing (kept for Gate 5): **A — iOS-first** — build the *thinnest*
+> end-to-end live loop on real iPad hardware, not a broad SwiftUI app. Depends on
+> the MIDI-input slice (PR #26).
 >
 > **Goal loop:** MIDI keyboard → CoreMIDI in → parser/router → chord recognition
 > → `EngineSession`/`StylePlayer` → CoreMIDI out → external tone generator.

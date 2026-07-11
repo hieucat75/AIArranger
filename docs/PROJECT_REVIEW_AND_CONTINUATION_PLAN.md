@@ -8,6 +8,38 @@
 
 ---
 
+## DIRECTION UPDATE (PTH, 2026-07-11) — supersedes the "iOS-first absolute" framing below
+
+**Mac-first for the ENGINE / integration / verification environment; iPad-first
+for the FINAL PRODUCT.** The macOS JUCE app becomes the **live-performance
+reference host + integration harness** used to get the engine's live loop correct
+and measured before any iPad UI is built. The final shippable product remains the
+**iPad SwiftUI app** — deferred to Gate 5. No SwiftUI / Swift-C++ bridge / iOS
+lifecycle / signing work happens until the engine live loop is proven on the Mac
+host. The already-landed **Phase-1 platform split** and **LiveEngineFacade** are
+kept (they satisfy the Gate-4 portability contract).
+
+**Gate roadmap (this supersedes §K's ordering):**
+1. **Gate 1 — MIDI-input PR** ✅ ([PR #26](https://github.com/hieucat75/AIArranger/pull/26)).
+2. **Gate 2 — Mac live-performance reference host (JUCE)**: real keyboard → MIDI
+   in → parser/router → chord → EngineSession → StylePlayer → CoreMIDI out →
+   external device. Minimal macOS UI (input/output pick, SFF1 load, chord,
+   transport, Intro/Variation/Fill/Break/Ending, Sync Start, track mute, panic,
+   device/error status). Reference implementation, NOT the product. See
+   `docs/gate-plans/GATE_2_MAC_REFERENCE_HOST_PLAN.md`.
+3. **Gate 3 — Live correctness**: input→engine wiring, chord latch ~80 ms,
+   sustain/hold, CC123/panic, disconnect/reconnect, no stuck notes, bar-boundary
+   transitions, real-keyboard tests, 30–60 min soak, real MIDI-timing measurement.
+   No wide 2-clock/2-groove refactor unless evidence shows it blocks the live loop.
+4. **Gate 4 — Freeze the engine contract for iPad** (public API, command/event
+   model, snapshot, thread ownership, MIDI in/out abstraction, callback rules,
+   lifecycle, error reporting, bridge + platform-adapter boundary). Portable core
+   stays Apple-framework-free; CoreMIDI in the platform adapter (started Phase 1).
+5. **Gate 5 — iPad SwiftUI** (final product): only after Gates 2–4 pass acceptance.
+   `docs/gate-plans/IOS_THIN_VERTICAL_SLICE_PLAN.md` is **deferred to Gate 5**.
+
+---
+
 ## A. EXECUTIVE SUMMARY
 
 AI Arranger is a **live-performance arranger engine**. After 15 disciplined
