@@ -152,6 +152,43 @@ static void testTracerEmitDrain() {
     tr.reset();
 }
 
+static void testTracerWarmup() {
+    std::printf("Tracer: warmup primes clock/ring then resets to zero\n");
+    auto& tr = tracer();
+    tr.reset();
+    tr.setEnabled(true);
+
+    // Dirty some state so we can prove warmup() clears it: a bumped counter, a
+    // live correlation, an un-drained record, and a nonzero live-note gauge.
+    tr.counters().input_callbacks.fetch_add(7, std::memory_order_relaxed);
+    tr.counters().active_notes.fetch_add(3, std::memory_order_relaxed);
+    tr.newCorrelation();
+    tr.emit(TraceStage::MidiSend, 0, 60, 100, kNa, kNa, LifecycleTag::kNone);
+
+    tr.warmup();
+
+    auto snap = tr.counters().snapshot();
+    TEST("warmup zeroes session counters",
+         snap.input_callbacks == 0 && snap.midi_sends == 0 &&
+         snap.dropped_records == 0);
+    // The live active_notes gauge tracks physically sounding notes and must
+    // survive a capture-start warm-up (else a held note's later NoteOff would
+    // drive it negative → false stuck-note FAIL).
+    TEST("warmup preserves the live active_notes gauge", snap.active_notes == 3);
+    TEST("warmup resets correlation", tr.currentCorrelation() == 0);
+    TraceRecord out{};
+    TEST("warmup leaves no residual records in the ring", !tr.drainOne(out));
+
+    // Runtime-disabled warmup is a pure no-op (zero-overhead contract): it must
+    // not emit or otherwise touch the ring.
+    tr.reset();
+    tr.setEnabled(false);
+    tr.warmup();
+    TEST("warmup while disabled is a no-op", !tr.drainOne(out));
+    tr.setEnabled(true);
+    tr.reset();
+}
+
 static void testTracerDroppedCounter() {
     std::printf("Tracer: ring-full increments dropped_records\n");
     auto& tr = tracer();
@@ -178,6 +215,7 @@ int main() {
     testRingConcurrentProducers();
 #if AIARR_TRACE_ENABLED
     testTracerEmitDrain();
+    testTracerWarmup();
     testTracerDroppedCounter();
 #else
     std::printf("(tracer assertions skipped - build gate off)\n");

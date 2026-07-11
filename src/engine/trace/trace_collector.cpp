@@ -13,6 +13,11 @@ TraceCollector::~TraceCollector() {
 
 void TraceCollector::start() {
     if (running_.exchange(true, std::memory_order_acq_rel)) return; // already running
+    // Prime the trace clock + ring off the RT path and clear warm-up residue
+    // BEFORE the first sample can arrive, so capture starts from a clean, warm
+    // state. This is a non-RT startup path (start() spawns the drain thread); the
+    // call is a no-op when the runtime gate is disabled.
+    tracer().warmup();
     thread_ = std::thread([this] { loop(); });
 }
 
