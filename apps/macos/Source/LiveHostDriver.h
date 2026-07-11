@@ -41,9 +41,17 @@ public:
 
     void stop() {
         if (!running_) return;
-        stopTimer();
+        stopTimer();   // tick thread quiesced: engine is single-threaded here now
+        // Silence the output device SYNCHRONOUSLY before detaching MIDI, so closing
+        // while playing never leaves hanging notes. panic() = all-sound-off (CC120)
+        // per active channel + clock stop; tick(0) drains+pumps it onto the output
+        // queue now (with the tick thread stopped, enqueuing Stop alone would never
+        // be pumped). CoreMidiOut::shutdown() then drains that queue before joining,
+        // so the CC120 reaches the endpoint before the port is disposed.
+        facade_.panic();
+        facade_.tick(0);
         // N1 (review #27): disconnect the CoreMIDI source BEFORE the facade clears
-        // the input sink, so no read-thread callback races a half-cleared sink.
+        // the input sink (the sink teardown itself now also drains in-flight reads).
         midi_in_.selectSource(-1);
         facade_.stop();
         midi_in_.shutdown();

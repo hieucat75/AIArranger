@@ -93,6 +93,7 @@ public:
 
 private:
     void dispatchLoop() noexcept;          // consumer thread body
+    void dispatchOne(const uasf::MidiEvent& ev) noexcept; // send one event now
     void resolveEndpointByName() noexcept; // hotplug re-resolution
     static void notifyProc(const MIDINotification* msg, void* refCon);
 
