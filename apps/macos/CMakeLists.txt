@@ -30,8 +30,11 @@ target_compile_definitions(aiarranger-macos PRIVATE
 # The shell consumes the engine + the headless app-shell modules (session/
 # control/ui/midi) that live in arranger-engine.
 target_link_libraries(aiarranger-macos PRIVATE
+    # arranger-engine is pulled in transitively (platform-apple PUBLIC +
+    # importer-sff1), so it is not listed explicitly — a second, non-adjacent
+    # reference makes the linker warn about a duplicate static library.
     platform-apple
-    arranger-engine
+    importer-sff1
     juce::juce_gui_extra
     juce::juce_audio_basics
     juce::juce_audio_devices)

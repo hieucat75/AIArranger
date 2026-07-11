@@ -1,0 +1,248 @@
+#include "LiveHostComponent.h"
+#include "importers/sff1/sff1_reader.h"
+#include "importers/sff1/sff1_mapper.h"
+#include "engine/arranger/chord_input.h"
+
+namespace ai_arranger::app {
+
+namespace {
+const char* kNoteNames[12] = {"C", "C#", "D", "D#", "E", "F",
+                              "F#", "G", "G#", "A", "A#", "B"};
+
+const char* chordTypeName(arranger::ChordType t) {
+    using CT = arranger::ChordType;
+    switch (t) {
+        case CT::Major: return "";       case CT::Minor: return "m";
+        case CT::Dim:   return "dim";    case CT::Aug:   return "aug";
+        case CT::Maj7:  return "maj7";   case CT::Min7:  return "m7";
+        case CT::Dom7:  return "7";      case CT::Dim7:  return "dim7";
+        case CT::Sus4:  return "sus4";   case CT::Sus2:  return "sus2";
+        case CT::Power: return "5";      default:        return "";
+    }
+}
+
+juce::String formatChord(const session::EngineSnapshot& s) {
+    if (static_cast<arranger::ChordType>(s.chordType) == arranger::ChordType::NoChord)
+        return "--";
+    juce::String name = kNoteNames[s.chordRoot % 12];
+    name << chordTypeName(static_cast<arranger::ChordType>(s.chordType));
+    if (s.chordBass != 0 && s.chordBass != s.chordRoot)
+        name << "/" << kNoteNames[s.chordBass % 12];
+    return name;
+}
+
+void styleLabel(juce::Label& l, const juce::String& text, float pt = 15.0f) {
+    l.setText(text, juce::dontSendNotification);
+    l.setFont(juce::Font(juce::FontOptions(pt)));
+    l.setColour(juce::Label::textColourId, juce::Colours::white);
+}
+} // namespace
+
+LiveHostComponent::LiveHostComponent() {
+    styleLabel(titleLabel_, "AI Arranger - Live Reference Host", 20.0f);
+    styleLabel(inLabel_,  "MIDI In");
+    styleLabel(outLabel_, "MIDI Out");
+    styleLabel(styleLabel_,   "Style: (demo)");
+    styleLabel(chordLabel_,   "--", 34.0f);
+    styleLabel(sectionLabel_, "Section: -");
+    styleLabel(tempoLabel_,   "Tempo 120");
+    styleLabel(statusLabel_,  "Status: starting...");
+
+    addAndMakeVisible(titleLabel_);
+    addAndMakeVisible(inLabel_);
+    addAndMakeVisible(outLabel_);
+    addAndMakeVisible(styleLabel_);
+    addAndMakeVisible(chordLabel_);
+    addAndMakeVisible(sectionLabel_);
+    addAndMakeVisible(tempoLabel_);
+    addAndMakeVisible(statusLabel_);
+    addAndMakeVisible(inputBox_);
+    addAndMakeVisible(outputBox_);
+
+    // Device selection routes through the facade (lock-free).
+    inputBox_.onChange = [this] {
+        const int id = inputBox_.getSelectedId();
+        driver_.facade().selectMidiInput(id == 1 ? -1 : id - 2);
+    };
+    outputBox_.onChange = [this] {
+        const int id = outputBox_.getSelectedId();
+        driver_.facade().selectMidiOutput(id == 1 ? -1 : id - 2);
+    };
+
+    tempoSlider_.setRange(40.0, 300.0, 1.0);
+    tempoSlider_.setValue(120.0, juce::dontSendNotification);
+    tempoSlider_.setSliderStyle(juce::Slider::LinearHorizontal);
+    tempoSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 60, 22);
+    tempoSlider_.onValueChange = [this] {
+        driver_.facade().setTempo(static_cast<uint32_t>(tempoSlider_.getValue()));
+    };
+    addAndMakeVisible(tempoSlider_);
+
+    // Transport + section controls: each posts a lock-free facade command.
+    startBtn_.onClick  = [this] { driver_.facade().transportStart(); };
+    stopBtn_.onClick   = [this] { driver_.facade().transportStop(); };
+    syncBtn_.onClick   = [this] { driver_.facade().syncStart(); };
+    introBtn_.onClick  = [this] { driver_.facade().intro(); };
+    varA_.onClick      = [this] { driver_.facade().setVariation(0); };
+    varB_.onClick      = [this] { driver_.facade().setVariation(1); };
+    varC_.onClick      = [this] { driver_.facade().setVariation(2); };
+    varD_.onClick      = [this] { driver_.facade().setVariation(3); };
+    fillBtn_.onClick   = [this] { driver_.facade().fill(); };
+    breakBtn_.onClick  = [this] { driver_.facade().breakSection(); };
+    endingBtn_.onClick = [this] { driver_.facade().ending(); };
+    panicBtn_.onClick  = [this] { driver_.facade().panic(); };
+    refreshBtn_.onClick = [this] { refreshDevices(); };
+    loadBtn_.onClick    = [this] { loadStyleDialog(); };
+
+    panicBtn_.setColour(juce::TextButton::buttonColourId, juce::Colours::darkred);
+
+    for (auto* b : {&refreshBtn_, &loadBtn_, &startBtn_, &stopBtn_, &syncBtn_,
+                    &introBtn_, &varA_, &varB_, &varC_, &varD_, &fillBtn_,
+                    &breakBtn_, &endingBtn_, &panicBtn_})
+        addAndMakeVisible(*b);
+
+    driver_.start();       // boot engine + open CoreMIDI (safe with 0 devices)
+    refreshDevices();
+    startTimerHz(30);
+    setSize(720, 460);
+}
+
+LiveHostComponent::~LiveHostComponent() {
+    stopTimer();
+    driver_.stop();
+}
+
+void LiveHostComponent::refreshDevices() {
+    inputBox_.clear(juce::dontSendNotification);
+    inputBox_.addItem("(none)", 1);
+    for (const auto& s : driver_.midiIn().enumerateSources())
+        inputBox_.addItem(s.name.empty() ? "?" : s.name, s.index + 2);
+    const int selIn = driver_.facade().snapshot().midiInLive
+                          ? driver_.midiIn().selectedSource() : -1;
+    inputBox_.setSelectedId(selIn < 0 ? 1 : selIn + 2, juce::dontSendNotification);
+
+    outputBox_.clear(juce::dontSendNotification);
+    outputBox_.addItem("(none)", 1);
+    for (const auto& d : driver_.midiOut().enumerate())
+        outputBox_.addItem(d.name.empty() ? "?" : d.name, d.index + 2);
+    const int selOut = driver_.midiOut().selected();
+    outputBox_.setSelectedId(selOut < 0 ? 1 : selOut + 2, juce::dontSendNotification);
+}
+
+void LiveHostComponent::loadStyleDialog() {
+    chooser_ = std::make_unique<juce::FileChooser>(
+        "Select an SFF1 .sty style", juce::File{}, "*.sty");
+    const auto flags = juce::FileBrowserComponent::openMode |
+                       juce::FileBrowserComponent::canSelectFiles;
+    chooser_->launchAsync(flags, [this](const juce::FileChooser& fc) {
+        const juce::File f = fc.getResult();
+        if (f == juce::File{}) return;   // cancelled
+
+        importers::sff1::Sff1Reader reader;
+        auto pr = reader.parseFile(f.getFullPathName().toStdString());
+        if (!pr.success) {
+            styleLabel(styleLabel_, "Load failed: " + juce::String(pr.error));
+            return;
+        }
+        importers::sff1::Sff1ToUasfMapper mapper;
+        auto mr = mapper.map(pr);
+        if (!mr.success) {
+            styleLabel(styleLabel_, "Map failed: " + juce::String(mr.error));
+            return;
+        }
+        // Load while stopped so the sequencer re-arms cleanly.
+        driver_.facade().transportStop();
+        driver_.facade().loadStyle(mr.style);
+        styleLabel(styleLabel_, "Style: " + juce::String(f.getFileNameWithoutExtension()));
+    });
+}
+
+void LiveHostComponent::timerCallback() {
+    const auto s = driver_.facade().snapshot();
+
+    chordLabel_.setText(formatChord(s), juce::dontSendNotification);
+    sectionLabel_.setText("Section: " + juce::String(s.section) +
+                          (s.playing ? "  (playing)" : "  (stopped)"),
+                          juce::dontSendNotification);
+    tempoLabel_.setText("Tempo " + juce::String(s.tempoBpm), juce::dontSendNotification);
+
+    // Connection / error status. Transport must NOT stop on device loss; we only
+    // surface the state (DOCTRINE 06).
+    juce::String status;
+    status << "In: "  << (s.midiInLive  ? "connected" : "none")
+           << "   Out: " << (s.midiOutLive ? "connected" : "none")
+           << "   rx: " << juce::String(s.receivedMessages)
+           << "   tx: " << juce::String(s.dispatchedNotes);
+    statusLabel_.setText(status, juce::dontSendNotification);
+    statusLabel_.setColour(juce::Label::textColourId,
+                           s.midiOutLive ? juce::Colours::lightgreen
+                                         : juce::Colours::orange);
+
+    startBtn_.setColour(juce::TextButton::buttonColourId,
+                        s.playing ? juce::Colours::darkgreen
+                                  : juce::Colours::darkgrey);
+}
+
+void LiveHostComponent::paint(juce::Graphics& g) {
+    g.fillAll(juce::Colour(0xff1e1e1e));
+}
+
+void LiveHostComponent::resized() {
+    auto area = getLocalBounds().reduced(12);
+    titleLabel_.setBounds(area.removeFromTop(30));
+    area.removeFromTop(6);
+
+    // Device row.
+    auto devRow = area.removeFromTop(26);
+    inLabel_.setBounds(devRow.removeFromLeft(60));
+    inputBox_.setBounds(devRow.removeFromLeft(230));
+    devRow.removeFromLeft(12);
+    outLabel_.setBounds(devRow.removeFromLeft(64));
+    outputBox_.setBounds(devRow.removeFromLeft(230));
+    area.removeFromTop(6);
+
+    auto styleRow = area.removeFromTop(26);
+    loadBtn_.setBounds(styleRow.removeFromLeft(120));
+    styleRow.removeFromLeft(8);
+    refreshBtn_.setBounds(styleRow.removeFromLeft(90));
+    styleRow.removeFromLeft(12);
+    styleLabel_.setBounds(styleRow);
+    area.removeFromTop(10);
+
+    chordLabel_.setBounds(area.removeFromTop(48));
+    sectionLabel_.setBounds(area.removeFromTop(24));
+    area.removeFromTop(8);
+
+    auto tempoRow = area.removeFromTop(28);
+    tempoLabel_.setBounds(tempoRow.removeFromLeft(100));
+    tempoSlider_.setBounds(tempoRow);
+    area.removeFromTop(10);
+
+    auto transportRow = area.removeFromTop(34);
+    for (auto* b : {&startBtn_, &stopBtn_, &syncBtn_}) {
+        b->setBounds(transportRow.removeFromLeft(110));
+        transportRow.removeFromLeft(6);
+    }
+    area.removeFromTop(8);
+
+    auto sectionRow = area.removeFromTop(34);
+    introBtn_.setBounds(sectionRow.removeFromLeft(70));
+    sectionRow.removeFromLeft(6);
+    for (auto* b : {&varA_, &varB_, &varC_, &varD_}) {
+        b->setBounds(sectionRow.removeFromLeft(44));
+        sectionRow.removeFromLeft(4);
+    }
+    sectionRow.removeFromLeft(6);
+    fillBtn_.setBounds(sectionRow.removeFromLeft(64));
+    sectionRow.removeFromLeft(6);
+    breakBtn_.setBounds(sectionRow.removeFromLeft(64));
+    sectionRow.removeFromLeft(6);
+    endingBtn_.setBounds(sectionRow.removeFromLeft(72));
+    area.removeFromTop(10);
+
+    auto bottom = area.removeFromTop(34);
+    panicBtn_.setBounds(bottom.removeFromLeft(140));
+    statusLabel_.setBounds(bottom);
+}
+
+} // namespace ai_arranger::app
