@@ -3,6 +3,8 @@
 
 #include "session/engine_session.h"
 #include "session/engine_snapshot.h"
+#include "session/engine_contract.h"
+#include "session/engine_lifecycle.h"
 #include "control/ui_event_queue.h"
 #include "control/midi_output_bridge.h"
 #include "engine/control/control_events.h"
@@ -43,26 +45,46 @@ public:
     void stop() noexcept;
 
     // Load a normalized style. Call before start() (boot keeps a pre-loaded
-    // style); calling while stopped re-arms the sequencer with a new style.
-    void loadStyle(const uasf::StyleDefinition& style) noexcept { session_.loadStyle(style); }
+    // style); calling while stopped re-arms the sequencer with a new style. The
+    // lifecycle tracker advances toward Ready when not running; a load while
+    // running is a pass-through (behaviour unchanged) and does not move state.
+    void loadStyle(const uasf::StyleDefinition& style) noexcept {
+        session_.loadStyle(style);
+        if (lifecycle_.state() != LifecycleState::Running &&
+            lifecycle_.state() != LifecycleState::Suspended)
+            lifecycle_.apply(LifecycleEvent::LoadStyle);
+    }
 
     // ── Commands (any thread, lock-free) ──────────────────────────────
-    void transportStart() noexcept { cmd_q_.push({control::ControlAction::Start, 0, 0}); }
-    void transportStop()  noexcept { cmd_q_.push({control::ControlAction::Stop, 0, 0}); }
+    // Each enqueues onto the SPSC command queue drained in tick(). A dropped
+    // command (queue full) records EngineError::QueueFull, observable via
+    // lastError() — the enqueue itself stays fire-and-forget (unchanged behaviour).
+    void transportStart() noexcept { push(control::ControlAction::Start); }
+    void transportStop()  noexcept { push(control::ControlAction::Stop); }
     // Sync Start: arm the engine; the first detected chord fires playback.
-    void syncStart()      noexcept { cmd_q_.push({control::ControlAction::SyncArm, 0, 0}); }
-    void intro()          noexcept { cmd_q_.push({control::ControlAction::Intro, 0, 0}); }
-    void fill()           noexcept { cmd_q_.push({control::ControlAction::Fill, 0, 0}); }
-    void breakSection()   noexcept { cmd_q_.push({control::ControlAction::Break, 0, 0}); }
-    void ending()         noexcept { cmd_q_.push({control::ControlAction::Ending, 0, 0}); }
-    void panic()          noexcept { cmd_q_.push({control::ControlAction::Panic, 0, 0}); }
+    void syncStart()      noexcept { push(control::ControlAction::SyncArm); }
+    void intro()          noexcept { push(control::ControlAction::Intro); }
+    void fill()           noexcept { push(control::ControlAction::Fill); }
+    void breakSection()   noexcept { push(control::ControlAction::Break); }
+    void ending()         noexcept { push(control::ControlAction::Ending); }
+    void panic()          noexcept { push(control::ControlAction::Panic); }
     // variation 0..3 -> A..D; out-of-range ignored.
     void setVariation(int index) noexcept;
     void setTempo(uint32_t bpm) noexcept { pending_tempo_.store(bpm, std::memory_order_relaxed); }
 
-    // Device selection (delegates to the injected source/provider).
-    bool selectMidiInput(int index) noexcept  { return input_  ? input_->selectSource(index) : false; }
-    bool selectMidiOutput(int index) noexcept { return output_ ? output_->select(index) : false; }
+    // Device selection (delegates to the injected source/provider). A failed
+    // selection records EngineError::DeviceUnavailable; the bool return is
+    // unchanged.
+    bool selectMidiInput(int index) noexcept  {
+        const bool ok = input_ ? input_->selectSource(index) : false;
+        if (!ok) recordError(EngineError::DeviceUnavailable);
+        return ok;
+    }
+    bool selectMidiOutput(int index) noexcept {
+        const bool ok = output_ ? output_->select(index) : false;
+        if (!ok) recordError(EngineError::DeviceUnavailable);
+        return ok;
+    }
 
     // Chord detector (caller owns the instance; Fingered is a sensible default).
     void setChordScanMode(const chord::IChordScanMode* mode) noexcept {
@@ -79,8 +101,39 @@ public:
 
     EngineSession& session() noexcept { return session_; }
 
+    // ── Contract queries (Gate 4) ─────────────────────────────────────
+    // What this engine build/instance can do. Constant for the instance's life
+    // except for the device-presence flags. Safe to call from any thread.
+    EngineCapabilities capabilities() const noexcept {
+        EngineCapabilities c;
+        c.hasMidiInput  = (input_  != nullptr);
+        c.hasMidiOutput = (output_ != nullptr);
+#ifdef AIARR_LATENCY_TRACE
+        c.latencyTrace = true;
+#endif
+        return c;
+    }
+
+    // High-level lifecycle state (Created/Ready/Running/Stopped/...). Advanced by
+    // start()/stop()/loadStyle() on the owner thread; also mirrored into
+    // snapshot().lifecycleState for lock-free UI polling from another thread.
+    LifecycleState lifecycleState() const noexcept { return lifecycle_.state(); }
+
+    // The most recent deterministic error (QueueFull / DeviceUnavailable / ...),
+    // or Ok if none. Cleared by clearError(). Reads/writes are relaxed-atomic.
+    EngineError lastError() const noexcept { return last_error_.load(std::memory_order_relaxed); }
+    void clearError() noexcept { last_error_.store(EngineError::Ok, std::memory_order_relaxed); }
+
+    static constexpr uint32_t contractVersion() noexcept { return kEngineContractVersion; }
+
 private:
     void publishSnapshot() noexcept;
+    void push(control::ControlAction a, int32_t param = 0) noexcept {
+        if (!cmd_q_.push({a, param, 0})) recordError(EngineError::QueueFull);
+    }
+    void recordError(EngineError e) noexcept {
+        last_error_.store(e, std::memory_order_relaxed);
+    }
 
     EngineSession              session_;
     midi::IMidiInputSource*     input_;
@@ -92,6 +145,8 @@ private:
 
     std::atomic<uint32_t>       pending_tempo_{0};
     std::atomic<EngineSnapshot> snapshot_{};
+    EngineLifecycle             lifecycle_{};                 // Gate 4 lifecycle tracker
+    std::atomic<EngineError>    last_error_{EngineError::Ok}; // most recent deterministic error
     bool started_{false};
 };
 

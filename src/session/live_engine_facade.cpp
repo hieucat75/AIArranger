@@ -30,6 +30,7 @@ void LiveEngineFacade::start() noexcept {
         });
     }
     started_ = true;
+    lifecycle_.apply(LifecycleEvent::Start);   // Gate 4: track high-level state
     publishSnapshot();
 }
 
@@ -39,6 +40,7 @@ void LiveEngineFacade::stop() noexcept {
     if (input_) input_->setSink(nullptr);
     session_.shutdown();   // stops playback + flushes all notes (no hanging notes)
     started_ = false;
+    lifecycle_.apply(LifecycleEvent::Stop);    // Gate 4: track high-level state
     publishSnapshot();
 }
 
@@ -46,7 +48,7 @@ void LiveEngineFacade::setVariation(int index) noexcept {
     if (index < 0 || index > 3) return;
     const auto action = static_cast<control::ControlAction>(
         static_cast<int>(control::ControlAction::VariationA) + index);
-    cmd_q_.push({action, 0, 0});
+    push(action);
 }
 
 void LiveEngineFacade::tick(uint32_t numSamples) noexcept {
@@ -80,6 +82,7 @@ void LiveEngineFacade::publishSnapshot() noexcept {
     s.tempoBpm       = session_.clock().getTempo();
     s.positionTicks  = session_.clock().getPosition();
     s.performerState = static_cast<int32_t>(session_.adapter().state());
+    s.lifecycleState = static_cast<int32_t>(lifecycle_.state());
     s.midiInLive     = input_  ? input_->hasLiveSource() : false;
     s.midiOutLive    = output_ ? output_->hasLiveDestination() : false;
     s.receivedMessages = input_  ? input_->receivedCount() : 0;
