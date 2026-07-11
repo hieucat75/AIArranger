@@ -127,6 +127,20 @@ foreach(test_file ${TRACE_TEST_SRC})
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
 
+# ── Gate 4 engine/product contract tests ──────────────────────────────
+# The contract layer (engine_contract.h, engine_lifecycle, facade queries) is
+# portable. These tests link the core ONLY (arranger-engine + Threads, NO
+# platform-apple / NO Apple framework) — a link-time assertion of the platform
+# boundary: if any contract code reached for CoreMIDI/CoreAudio, these would fail
+# to link. Keep this list free of platform-apple.
+file(GLOB CONTRACT_TEST_SRC tests/session/*.cpp)
+foreach(test_file ${CONTRACT_TEST_SRC})
+    get_filename_component(test_name ${test_file} NAME_WE)
+    add_executable(${test_name} ${test_file})
+    target_link_libraries(${test_name} arranger-engine Threads::Threads)
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endforeach()
+
 # ── SFF1 parser CLI tool ──────────────────────────────────────────────
 add_executable(sff1-parser tools/sff1_parser_cli.cpp)
 target_link_libraries(sff1-parser importer-sff1 arranger-engine)
