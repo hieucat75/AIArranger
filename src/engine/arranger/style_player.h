@@ -47,7 +47,9 @@ public:
     bool start(int introSectionIndex = 0) noexcept;
     void stop() noexcept;
     void panic() noexcept;
+    void intro() noexcept;
     void fill() noexcept;
+    void breakSection() noexcept;
     void ending() noexcept;
     void switchSection(int index) noexcept;
 

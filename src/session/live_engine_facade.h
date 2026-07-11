@@ -42,10 +42,19 @@ public:
     void start() noexcept;
     void stop() noexcept;
 
+    // Load a normalized style. Call before start() (boot keeps a pre-loaded
+    // style); calling while stopped re-arms the sequencer with a new style.
+    void loadStyle(const uasf::StyleDefinition& style) noexcept { session_.loadStyle(style); }
+
     // ── Commands (any thread, lock-free) ──────────────────────────────
     void transportStart() noexcept { cmd_q_.push({control::ControlAction::Start, 0, 0}); }
     void transportStop()  noexcept { cmd_q_.push({control::ControlAction::Stop, 0, 0}); }
+    // Sync Start: arm the engine; the first detected chord fires playback.
+    void syncStart()      noexcept { cmd_q_.push({control::ControlAction::SyncArm, 0, 0}); }
+    void intro()          noexcept { cmd_q_.push({control::ControlAction::Intro, 0, 0}); }
     void fill()           noexcept { cmd_q_.push({control::ControlAction::Fill, 0, 0}); }
+    void breakSection()   noexcept { cmd_q_.push({control::ControlAction::Break, 0, 0}); }
+    void ending()         noexcept { cmd_q_.push({control::ControlAction::Ending, 0, 0}); }
     void panic()          noexcept { cmd_q_.push({control::ControlAction::Panic, 0, 0}); }
     // variation 0..3 -> A..D; out-of-range ignored.
     void setVariation(int index) noexcept;

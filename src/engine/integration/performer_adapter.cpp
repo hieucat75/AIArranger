@@ -64,6 +64,12 @@ void PerformerAdapter::handleControl(const control::ControlEvent& ev) noexcept {
             player_.switchSection(var_section_[idx]);  // sequencer quantizes
             break;
         }
+        case ControlAction::Intro:
+            player_.intro();   // sequencer switches at next bar boundary
+            break;
+        case ControlAction::Break:
+            player_.breakSection();
+            break;
         case ControlAction::Ending:
             player_.ending();
             break;
@@ -97,7 +103,7 @@ void PerformerAdapter::handleControl(const control::ControlEvent& ev) noexcept {
             doPanic();
             break;
         default:
-            break;  // None / Intro / Tap: no-op here
+            break;  // None / Tap: no-op here
     }
 }
 

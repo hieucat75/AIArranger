@@ -30,6 +30,8 @@ enum class ControlAction : uint8_t {
     NoteOn,
     NoteOff,
     Sustain,
+    // Break section (one-shot). Appended (not reordered) to keep values stable.
+    Break,
 };
 
 struct ControlEvent {
