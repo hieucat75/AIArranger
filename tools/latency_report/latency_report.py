@@ -291,7 +291,13 @@ def build_report(records, counters, thresholds):
             verdict_ok = False
             reasons.append(f"stuck notes: active_notes={counters['active_notes']}")
         if counters.get("dropped_records", 0) != 0:
-            reasons.append(f"WARN dropped_records={counters['dropped_records']}")
+            # Dropped records mean the trace ring overflowed and samples were lost
+            # — the surviving set is incomplete and may be missing exactly the slow
+            # outliers, so the percentiles cannot certify a pass. Block, don't warn.
+            verdict_ok = False
+            reasons.append(
+                f"dropped_records={counters['dropped_records']} — trace incomplete, "
+                "percentiles unreliable (cannot PASS)")
         if counters.get("queue_overflows", 0) != 0:
             verdict_ok = False
             reasons.append(f"queue_overflows={counters['queue_overflows']}")

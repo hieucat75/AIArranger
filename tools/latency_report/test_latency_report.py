@@ -108,6 +108,12 @@ def main():
     rep2 = lr.build_report(records, counters, strict)
     check("tighter p50 threshold -> FAIL", rep2["verdict_ok"] is False)
 
+    # ── Dropped trace records invalidate the verdict (incomplete data) ─
+    dropped = dict(counters, dropped_records=5000)
+    rep3 = lr.build_report(records, dropped, lr.DEFAULT_THRESHOLDS)
+    check("dropped_records > 0 -> FAIL (percentiles unreliable)",
+          rep3["verdict_ok"] is False)
+
     print(f"\n{'ALL PASSED' if failures == 0 else str(failures) + ' FAILED'}")
     return 1 if failures else 0
 
