@@ -150,9 +150,11 @@ void LiveHostComponent::loadStyleDialog() {
             styleLabel(styleLabel_, "Map failed: " + juce::String(mr.error));
             return;
         }
-        // Load while stopped so the sequencer re-arms cleanly.
-        driver_.facade().transportStop();
-        driver_.facade().loadStyle(mr.style);
+        // Parse + map succeeded, so the old style is only replaced by a valid one.
+        // reloadStyle() quiesces the engine tick thread (stopTimer blocks until the
+        // in-flight callback returns) before swapping, so the load never races
+        // tick(). Transport is left stopped — press Start to play the new style.
+        driver_.reloadStyle(mr.style);
         styleLabel(styleLabel_, "Style: " + juce::String(f.getFileNameWithoutExtension()));
     });
 }
