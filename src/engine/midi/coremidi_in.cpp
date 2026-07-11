@@ -128,6 +128,14 @@ void CoreMidiIn::readProc(const MIDIPacketList* pktList, void* readRefCon, void*
     // provably idle and safe to destroy. Ordering: increment → re-check accepting_
     // → use sink_ → decrement (the decrement always runs, even when not accepting).
     self->in_flight_.fetch_add(1, std::memory_order_acquire);
+    // StoreLoad barrier: this increment + the accepting_ load below, paired against
+    // quiesceReadCallback()'s accepting_ store + in_flight_ load, form a store-buffer
+    // (Dekker) pattern. Acquire/release alone permits BOTH sides to read stale — the
+    // reader seeing accepting_==true while the writer sees in_flight_==0 — which would
+    // let quiesce return and the caller destroy sink_ underneath this callback (UAF on
+    // the Apple Silicon / ARM64 target; x86 masks it via the lock-prefixed RMW). The
+    // matching seq_cst fences here and in quiesceReadCallback() forbid that outcome.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     if (self->accepting_.load(std::memory_order_acquire) && self->sink_) {
         const MIDIPacket* pkt = &pktList->packet[0];
         for (UInt32 i = 0; i < pktList->numPackets; ++i) {
@@ -147,6 +155,11 @@ void CoreMidiIn::quiesceReadCallback() noexcept {
     // non-realtime threads (setSink / shutdown), never on the read thread itself,
     // so this never deadlocks against its own callback.
     accepting_.store(false, std::memory_order_release);
+    // Matching half of the store-buffer barrier in readProc: force this accepting_
+    // store to be globally ordered before the in_flight_ load, so we can never read
+    // in_flight_==0 while a readProc that already saw accepting_==true is still in the
+    // sink. Without it, acquire/release permits that stale-stale outcome on ARM64.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     while (in_flight_.load(std::memory_order_acquire) != 0) {
         std::this_thread::yield();
     }
