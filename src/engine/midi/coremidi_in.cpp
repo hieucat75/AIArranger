@@ -136,15 +136,23 @@ void CoreMidiIn::readProc(const MIDIPacketList* pktList, void* readRefCon, void*
     // the Apple Silicon / ARM64 target; x86 masks it via the lock-prefixed RMW). The
     // matching seq_cst fences here and in quiesceReadCallback() forbid that outcome.
     std::atomic_thread_fence(std::memory_order_seq_cst);
-    if (self->accepting_.load(std::memory_order_acquire) && self->sink_) {
-        const MIDIPacket* pkt = &pktList->packet[0];
-        for (UInt32 i = 0; i < pktList->numPackets; ++i) {
-            MidiInputMessage msgs[64];
-            const size_t n = parseMidiInput(pkt->data, pkt->length, msgs, 64);
-            for (size_t j = 0; j < n; ++j) self->sink_(msgs[j]);
-            self->received_.fetch_add(n, std::memory_order_relaxed);
-            pkt = MIDIPacketNext(pkt);
+    // The sink is user-supplied. A throw from it must neither skip the in_flight_
+    // decrement below (that would wedge quiesceReadCallback()'s spin forever) nor
+    // unwind across this C callback back into CoreMIDI (undefined behaviour). Swallow
+    // it so the decrement always runs and the read thread stays live.
+    try {
+        if (self->accepting_.load(std::memory_order_acquire) && self->sink_) {
+            const MIDIPacket* pkt = &pktList->packet[0];
+            for (UInt32 i = 0; i < pktList->numPackets; ++i) {
+                MidiInputMessage msgs[64];
+                const size_t n = parseMidiInput(pkt->data, pkt->length, msgs, 64);
+                for (size_t j = 0; j < n; ++j) self->sink_(msgs[j]);
+                self->received_.fetch_add(n, std::memory_order_relaxed);
+                pkt = MIDIPacketNext(pkt);
+            }
         }
+    } catch (...) {
+        // A MIDI read callback must never propagate an exception.
     }
     self->in_flight_.fetch_sub(1, std::memory_order_release);
 }

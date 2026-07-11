@@ -150,6 +150,10 @@ bool CoreMidiOut::selectDestination(int index) noexcept {
     if (static_cast<ItemCount>(index) >= n) return false;
 
     MIDIEndpointRef ep = MIDIGetDestination(static_cast<ItemCount>(index));
+    // Device vanished between enumeration and selection: fail the switch cleanly
+    // rather than repointing to endpoint 0 (which would silence the old device and
+    // leave a half-switched state with selected_index_ set but no live endpoint).
+    if (ep == 0) return false;
     std::string name = endpointDisplayName(ep);
     MIDIEndpointRef old = endpoint_.load(std::memory_order_acquire);
     if (old != 0 && old != ep) sendAllSoundOff(old);
