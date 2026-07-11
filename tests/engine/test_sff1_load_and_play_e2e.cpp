@@ -19,8 +19,11 @@
 //   - the chord input actually drives the output (a different chord transposes
 //     the pitched tracks → a different event stream)
 //
-// If the corpus is absent (CI without proprietary styles), the test soft-skips
-// and passes, matching test_sty_to_uasf_roundtrip.cpp.
+// These 4 fixtures are a COMMITTED acceptance corpus (corpus/yamaha/sff1, see
+// docs/governance/IMPORTER_GOLDEN_CORPUS_POLICY.md — "Every importer change must
+// pass all golden files before merge"). A missing fixture or a wrong CORPUS_DIR
+// therefore FAILS the test (return non-zero); it must never silently soft-skip
+// to green, or a broken checkout / renamed corpus would hide a real regression.
 
 #include "importers/sff1/sff1_reader.h"
 #include "importers/sff1/sff1_mapper.h"
@@ -251,13 +254,17 @@ int main() {
         runFixture(f.label, f.needle);
     }
 
-    if (found == 0) {
-        std::printf("\n  ℹ️  SKIP: no Genos corpus present — nothing to verify.\n");
-        std::printf("\nResults: %d passed, %d failed\n", passes, failures);
-        return 0;
-    }
+    // The corpus is committed (acceptance golden files), so a missing fixture is
+    // a hard failure — never a silent soft-skip to green. This catches a broken
+    // checkout, a wrong CORPUS_DIR, or an accidentally-deleted/renamed fixture.
     if (found < 4) {
-        std::printf("\n  ⚠️  Only %d/4 Genos fixtures present; verified the ones found.\n", found);
+        std::fprintf(stderr,
+            "\n  ❌ FAIL: expected all 4 committed Genos SFF1 fixtures under %s, "
+            "found only %d/4.\n     They are a committed acceptance corpus "
+            "(docs/governance/IMPORTER_GOLDEN_CORPUS_POLICY.md); a missing fixture "
+            "or wrong\n     CORPUS_DIR must fail the build, not pass silently.\n",
+            CORPUS_DIR, found);
+        ++failures;
     }
 
     std::printf("\nResults: %d passed, %d failed (fixtures found: %d/4)\n",
