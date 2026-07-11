@@ -23,6 +23,7 @@ struct EngineSnapshot {
     uint32_t tempoBpm = 120;
     int64_t  positionTicks = 0;
     int32_t  performerState = 0; // performance::PerformerState
+    int32_t  lifecycleState = 0; // session::LifecycleState (Gate 4 contract)
     bool     midiInLive = false;
     bool     midiOutLive = false;
     uint64_t receivedMessages = 0;
