@@ -57,6 +57,17 @@ public:
     void setSustain(bool on) noexcept;
     bool sustain() const noexcept { return sustain_; }
 
+    // Chord latch / hold behaviour (chord-engine-spec v0.9 §6).
+    //  - Hold mode ON (default): releasing all keys keeps the last chord playing
+    //    forever (arranger "chord memory"); the latch is irrelevant.
+    //  - Hold mode OFF: releasing all keys arms a ~latchMs debounce; if the keys
+    //    stay released past the window the chord clears to NoChord, but a re-press
+    //    within the window keeps it (no flicker during re-fingering).
+    void setHoldMode(bool on) noexcept { hold_mode_ = on; }
+    bool holdMode() const noexcept { return hold_mode_; }
+    void setChordLatchMs(uint32_t ms) noexcept { latch_ms_ = ms; }
+    uint32_t chordLatchMs() const noexcept { return latch_ms_; }
+
     // ── Realtime tick: drain control events, drive the player ──────
     void tick() noexcept;
 
@@ -104,6 +115,13 @@ private:
     bool    sustain_{false};
     uint8_t sustained_[kMaxHeld]{};
     int     sustained_count_{0};
+
+    // Chord latch (hold-mode OFF only): a pending clear-to-NoChord armed on
+    // release, committed in tick() once the clock passes the deadline.
+    bool     hold_mode_{true};       // default: keep last chord (arranger memory)
+    uint32_t latch_ms_{80};          // release debounce window
+    bool     latch_pending_{false};
+    int64_t  latch_deadline_samples_{0};
 };
 
 } // namespace ai_arranger::integration
