@@ -1,5 +1,6 @@
 #include "engine/arranger/style_player.h"
 #include "engine/music/ntt.h"
+#include "engine/trace/latency_trace.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -36,6 +37,10 @@ bool StylePlayer::start(int introSectionIndex) noexcept {
     clock_.reset();
     clock_.start();
 
+    AIARR_TRACE_SET_TEMPO(style_.tempo_bpm);
+    AIARR_TRACE_SET_SECTION(introSectionIndex);
+    AIARR_TRACE_LIFECYCLE(::ai_arranger::trace::LifecycleTag::kStart);
+
     sequencer_.setCurrentChord(chords::CMaj);
     section_origin_tick_ = 0;
     section_rel_cursor_ = -1;
@@ -65,6 +70,8 @@ void StylePlayer::panic() noexcept {
     });
     sequencer_.panic();
     clock_.stop();
+    AIARR_TRACE_COUNT_PANIC();
+    AIARR_TRACE_LIFECYCLE(::ai_arranger::trace::LifecycleTag::kPanic);
     if (event_cb_) event_cb_("PANIC");
 }
 
@@ -108,6 +115,10 @@ void StylePlayer::setChord(Chord chord) noexcept {
     }
     chord_input_.setChord(chord);
     sequencer_.setCurrentChord(chord);
+    // Trace point (2): chord confirmed after latch/hold, now handed to the
+    // arranger. Opens a fresh correlation id linking this chord's downstream
+    // accompaniment → enqueue → send waypoints. Compiled out when the gate is off.
+    AIARR_TRACE_CHORD_CONFIRMED(chord.root, static_cast<uint8_t>(chord.type));
     if (event_cb_) {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "CHORD=%d,%d", static_cast<int>(chord.type), chord.root);
@@ -135,6 +146,8 @@ void StylePlayer::tick() noexcept {
         });
         section_origin_tick_ = currentTick;
         section_rel_cursor_ = -1;
+        AIARR_TRACE_SET_SECTION(sequencer_.getCurrentSectionIndex());
+        AIARR_TRACE_LIFECYCLE(::ai_arranger::trace::LifecycleTag::kSectionSwitch);
     }
 
     // Get current section
@@ -243,12 +256,20 @@ void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
                     continue; // already sounding — skip redundant retrigger
                 }
                 panic_handler_.noteOn(dispatched.channel, dispatched.data1);
+                AIARR_TRACE_NOTE_ON();
             } else if (isNoteOff) {
                 if (!panic_handler_.isNoteActive(dispatched.channel, dispatched.data1)) {
                     continue; // nothing to turn off — skip orphan/duplicate
                 }
                 panic_handler_.noteOff(dispatched.channel, dispatched.data1);
+                AIARR_TRACE_NOTE_OFF();
             }
+
+            // Trace point (3): the FIRST accompaniment event produced after the
+            // current chord confirm. markAccompFirst() dedupes to one record per
+            // chord, so this fires on every event yet only records the first.
+            AIARR_TRACE_ACCOMP_FIRST(dispatched.channel, dispatched.data1,
+                                     dispatched.data2);
 
             // Route through the articulation render strategy (Task C). The
             // default naive renderer emits exactly this one event, preserving

@@ -1,4 +1,5 @@
 #include "engine/midi/coremidi_out.h"
+#include "engine/trace/latency_trace.h"
 
 #include <chrono>
 #include <mutex>
@@ -163,6 +164,9 @@ bool CoreMidiOut::selectDestination(int index) noexcept {
     }
     selected_index_.store(index, std::memory_order_release);
     endpoint_.store(ep, std::memory_order_release);
+    // Non-RT context: record the active output endpoint id (0 = none). +1 so a
+    // valid index never collides with the "none" sentinel.
+    AIARR_TRACE_SET_OUTPUT_DEVICE(index + 1);
     return true;
 }
 
@@ -192,11 +196,15 @@ bool CoreMidiOut::hasLiveDestination() const noexcept {
 // ── Realtime-safe send ───────────────────────────────────────────────
 
 bool CoreMidiOut::send(const uasf::MidiEvent& ev) noexcept {
-    if (!queue_.push(ev)) {
+    const bool pushed = queue_.push(ev);
+    if (!pushed) {
         dropped_count_.fetch_add(1, std::memory_order_relaxed);
-        return false;
     }
-    return true;
+    // Trace point (4): event enqueued onto the MIDI output queue. `pushed` false
+    // means the SPSC queue was full (dropped) — recorded as a queue overflow.
+    // Compiled out entirely when the build gate is off.
+    AIARR_TRACE_OUTPUT_ENQUEUE(ev.channel, ev.data1, ev.data2, pushed);
+    return pushed;
 }
 
 // ── Diagnostics ──────────────────────────────────────────────────────
@@ -239,6 +247,8 @@ void CoreMidiOut::resolveEndpointByName() noexcept {
     endpoint_.store(found, std::memory_order_release);
     if (found != 0 && prev == 0) {
         reconnect_count_.fetch_add(1, std::memory_order_relaxed);
+        AIARR_TRACE_COUNT_RECONNECT();
+        AIARR_TRACE_LIFECYCLE(::ai_arranger::trace::LifecycleTag::kHotplugAdd);
     }
 }
 
@@ -307,6 +317,9 @@ void CoreMidiOut::dispatchOne(const uasf::MidiEvent& ev) noexcept {
                             /*timestamp=*/0, nbytes, bytes);
     if (pkt && MIDISend(out_port_, ep, pktList) == noErr) {
         sent_count_.fetch_add(1, std::memory_order_relaxed);
+        // Trace point (5): CoreMIDI MIDISend actually invoked (last waypoint of
+        // the input→output journey). Compiled out when the build gate is off.
+        AIARR_TRACE_MIDI_SEND(ev.channel, ev.data1, ev.data2);
     }
 }
 
