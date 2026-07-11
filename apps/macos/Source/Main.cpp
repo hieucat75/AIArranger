@@ -1,6 +1,9 @@
-// Gate 14 — AI Arranger macOS app entry point (JUCE).
+// Gate 2 — AI Arranger macOS live reference host entry point (JUCE).
+// The window hosts the Gate 2 LiveHostComponent (facade-driven live loop). The
+// Gate 14 MainComponent remains in the tree for reference but is no longer the
+// window content.
 #include <juce_gui_extra/juce_gui_extra.h>
-#include "MainComponent.h"
+#include "LiveHostComponent.h"
 
 namespace ai_arranger::app {
 
@@ -24,7 +27,7 @@ private:
                              juce::Colours::black,
                              DocumentWindow::allButtons) {
             setUsingNativeTitleBar(true);
-            setContentOwned(new MainComponent(), true);
+            setContentOwned(new LiveHostComponent(), true);
             setResizable(true, true);
             centreWithSize(getWidth(), getHeight());
             setVisible(true);

@@ -33,7 +33,9 @@ public:
     // ── Control (non-realtime) ────────────────────────────────────
     void setSections(const uasf::SectionDefinition* sections, size_t count) noexcept;
     void queueSection(int index) noexcept;  // Queue switch at next bar
+    void queueIntro() noexcept;
     void queueFill() noexcept;
+    void queueBreak() noexcept;
     void queueEnding() noexcept;
 
     // ── Realtime query ────────────────────────────────────────────

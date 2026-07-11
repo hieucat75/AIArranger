@@ -13,11 +13,32 @@ void SectionSequencer::queueSection(int index) noexcept {
     queued_section_.store(index, std::memory_order_release);
 }
 
+void SectionSequencer::queueIntro() noexcept {
+    // Find the first Intro section (symmetric with queueFill/queueEnding).
+    for (size_t i = 0; i < section_count_; ++i) {
+        if (sections_ && sections_[i].type >= uasf::SectionType::Intro1 &&
+            sections_[i].type <= uasf::SectionType::Intro3) {
+            queued_section_.store(static_cast<int>(i), std::memory_order_release);
+            return;
+        }
+    }
+}
+
 void SectionSequencer::queueFill() noexcept {
     // Find the first Fill section
     for (size_t i = 0; i < section_count_; ++i) {
         if (sections_ && sections_[i].type >= uasf::SectionType::Fill1 &&
             sections_[i].type <= uasf::SectionType::Fill4) {
+            queued_section_.store(static_cast<int>(i), std::memory_order_release);
+            return;
+        }
+    }
+}
+
+void SectionSequencer::queueBreak() noexcept {
+    // Find the first Break section.
+    for (size_t i = 0; i < section_count_; ++i) {
+        if (sections_ && sections_[i].type == uasf::SectionType::Break) {
             queued_section_.store(static_cast<int>(i), std::memory_order_release);
             return;
         }

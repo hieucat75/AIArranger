@@ -68,9 +68,19 @@ void StylePlayer::panic() noexcept {
     if (event_cb_) event_cb_("PANIC");
 }
 
+void StylePlayer::intro() noexcept {
+    sequencer_.queueIntro();
+    if (event_cb_) event_cb_("INTRO_QUEUED");
+}
+
 void StylePlayer::fill() noexcept {
     sequencer_.queueFill();
     if (event_cb_) event_cb_("FILL_QUEUED");
+}
+
+void StylePlayer::breakSection() noexcept {
+    sequencer_.queueBreak();
+    if (event_cb_) event_cb_("BREAK_QUEUED");
 }
 
 void StylePlayer::ending() noexcept {
