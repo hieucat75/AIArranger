@@ -66,7 +66,9 @@ LiveHostComponent::LiveHostComponent() {
     };
     outputBox_.onChange = [this] {
         const int id = outputBox_.getSelectedId();
-        driver_.facade().selectMidiOutput(id == 1 ? -1 : id - 2);
+        // Route through the driver: it silences the old device and stops the
+        // transport before repointing, so a switch never leaves hanging notes.
+        driver_.switchOutput(id == 1 ? -1 : id - 2);
     };
 
     tempoSlider_.setRange(40.0, 300.0, 1.0);

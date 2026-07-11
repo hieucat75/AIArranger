@@ -84,6 +84,25 @@ public:
         // transport left stopped; tick restarts via guard.
     }
 
+    // Switch the MIDI output safely while the engine may be running. Quiesce the
+    // tick thread, then panic (all-sound-off + clear the engine's active-note
+    // tracking so no leftover note-off later targets the NEW device) and stop the
+    // transport, then repoint the output — selectDestination() silences the OLD
+    // device synchronously first, so its all-notes-off never leaks to the new one.
+    // Transport is left stopped after the switch (press Start to resume).
+    void switchOutput(int index) {
+        if (!running_) {                 // no tick thread yet: plain select
+            facade_.selectMidiOutput(index);
+            return;
+        }
+        stopTimer();                     // quiesce: waits for the in-flight tick
+        struct TickGuard { LiveHostDriver* d; ~TickGuard() { d->restartTick(); } } guard{this};
+        facade_.panic();                 // stop + all-sound-off + clear active notes …
+        facade_.tick(0);                 // … applied now on the quiesced engine
+        facade_.selectMidiOutput(index); // silences old device, then attaches new
+        // transport left stopped; tick restarts via guard.
+    }
+
     // ── Accessors for the UI ──────────────────────────────────────────
     // Commands are posted and the snapshot is read through the facade (lock-free);
     // enumeration is read straight off the platform adapters.

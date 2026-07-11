@@ -132,13 +132,18 @@ std::vector<MidiDestinationInfo> CoreMidiOut::enumerateDestinations() const noex
 }
 
 bool CoreMidiOut::selectDestination(int index) noexcept {
+    // Silence the OUTGOING device synchronously before repointing, so a switch (or
+    // disconnect) never leaves it with hanging notes and its all-sound-off is never
+    // sent to the newly selected device. Validate first so a failed switch leaves
+    // both the old device and the current selection untouched.
     if (index < 0) {
+        MIDIEndpointRef old = endpoint_.exchange(0, std::memory_order_acq_rel);
+        if (old != 0) sendAllSoundOff(old);
         {
             std::lock_guard<std::mutex> lk(nameMutex());
             selected_name_.clear();
         }
         selected_index_.store(-1, std::memory_order_release);
-        endpoint_.store(0, std::memory_order_release);
         return true;
     }
     ItemCount n = MIDIGetNumberOfDestinations();
@@ -146,6 +151,8 @@ bool CoreMidiOut::selectDestination(int index) noexcept {
 
     MIDIEndpointRef ep = MIDIGetDestination(static_cast<ItemCount>(index));
     std::string name = endpointDisplayName(ep);
+    MIDIEndpointRef old = endpoint_.load(std::memory_order_acquire);
+    if (old != 0 && old != ep) sendAllSoundOff(old);
     {
         std::lock_guard<std::mutex> lk(nameMutex());
         selected_name_ = name;
@@ -153,6 +160,21 @@ bool CoreMidiOut::selectDestination(int index) noexcept {
     selected_index_.store(index, std::memory_order_release);
     endpoint_.store(ep, std::memory_order_release);
     return true;
+}
+
+void CoreMidiOut::sendAllSoundOff(MIDIEndpointRef ep) noexcept {
+    if (ep == 0 || out_port_ == 0) return;
+    for (uint8_t ch = 0; ch < 16; ++ch) {
+        const uint8_t ctrls[2] = {123 /*All Notes Off*/, 120 /*All Sound Off*/};
+        for (uint8_t cc : ctrls) {
+            uint8_t bytes[3] = {static_cast<uint8_t>(0xB0 | ch), cc, 0};
+            uint8_t listBuf[64];
+            MIDIPacketList* pl = reinterpret_cast<MIDIPacketList*>(listBuf);
+            MIDIPacket* pkt = MIDIPacketListInit(pl);
+            pkt = MIDIPacketListAdd(pl, sizeof(listBuf), pkt, /*timestamp=*/0, 3, bytes);
+            if (pkt) MIDISend(out_port_, ep, pl);
+        }
+    }
 }
 
 int CoreMidiOut::selectedDestination() const noexcept {

@@ -94,6 +94,10 @@ public:
 private:
     void dispatchLoop() noexcept;          // consumer thread body
     void dispatchOne(const uasf::MidiEvent& ev) noexcept; // send one event now
+    // Directly send All-Notes-Off (CC123) + All-Sound-Off (CC120) on every channel
+    // to `ep` (non-realtime, calling thread). Used to silence the outgoing device
+    // before a destination switch/disconnect.
+    void sendAllSoundOff(MIDIEndpointRef ep) noexcept;
     void resolveEndpointByName() noexcept; // hotplug re-resolution
     static void notifyProc(const MIDINotification* msg, void* refCon);
 
