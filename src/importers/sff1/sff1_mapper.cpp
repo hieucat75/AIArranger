@@ -147,14 +147,11 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
             track.articulation.profile = uasf::ArticulationProfile::Generic;
             track.articulation.fidelity = uasf::FidelityRequirement::High;
 
-            // Pass NTR/NTT from CASM config to UASF articulation
-            for (const auto& cfg : parseResult.casm_configs) {
-                if (track.name.find(cfg.name) != std::string::npos) {
-                    track.articulation.ntr = cfg.ntr;
-                    track.articulation.ntt = cfg.ntt;
-                    break;
-                }
-            }
+            // NTR/NTT come from this section's own Ctb2 entry: the same track
+            // name can carry a different rule in another section (C_WHISPER's
+            // Strings), so never look it up by name across the whole file.
+            track.articulation.ntr = t.ntr;
+            track.articulation.ntt = t.ntt;
 
             sec.tracks.push_back(std::move(track));
         }
