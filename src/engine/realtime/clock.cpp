@@ -1,13 +1,29 @@
 #include "engine/realtime/clock.h"
 #include <cmath>
 
+#if defined(__APPLE__)
+#include <mach/mach_time.h>
+#endif
+
 namespace ai_arranger::realtime {
 
-static mach_timebase_info_data_t sTimebaseInfo = []() {
+namespace {
+// Host-time -> ns ratio. On Apple the host time is mach_absolute_time() ticks
+// (CoreAudio's time base). Elsewhere the host time fed to setMachTime() is
+// already nanoseconds, so the ratio is 1/1. Kept out of the header so the
+// portable core's public surface includes no Darwin header.
+struct HostTimebase { uint32_t numer; uint32_t denom; };
+const HostTimebase sTimebaseInfo = []() {
+#if defined(__APPLE__)
     mach_timebase_info_data_t info{};
     mach_timebase_info(&info);
-    return info;
+    if (info.denom == 0) return HostTimebase{1, 1};
+    return HostTimebase{info.numer, info.denom};
+#else
+    return HostTimebase{1, 1};
+#endif
 }();
+} // namespace
 
 RealtimeClock::RealtimeClock() {
     recalcDerived();
