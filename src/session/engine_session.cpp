@@ -7,6 +7,22 @@ EngineSession::EngineSession() noexcept = default;
 void EngineSession::loadStyle(const uasf::StyleDefinition& style) noexcept {
     player_.loadStyle(style);
     style_loaded_ = true;
+
+    // Variation A-D -> the style's Main A-D sections (by type, not by index:
+    // index k is an Intro/Fill/Ending in most styles). A missing Main falls
+    // back to the first Main; a style without Mains keeps indexes 0-3.
+    int mains[4] = {-1, -1, -1, -1};
+    int firstMain = -1;
+    for (size_t i = 0; i < style.sections.size(); ++i) {
+        const auto t = style.sections[i].type;
+        if (t < uasf::SectionType::Main1 || t > uasf::SectionType::Main4) continue;
+        const int k = static_cast<int>(t) - static_cast<int>(uasf::SectionType::Main1);
+        if (mains[k] < 0) mains[k] = static_cast<int>(i);
+        if (firstMain < 0) firstMain = static_cast<int>(i);
+    }
+    for (int k = 0; k < 4; ++k)
+        if (mains[k] < 0) mains[k] = (firstMain >= 0) ? firstMain : k;
+    adapter_.setVariationSections(mains[0], mains[1], mains[2], mains[3]);
 }
 
 bool EngineSession::boot() noexcept {

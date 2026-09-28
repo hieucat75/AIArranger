@@ -230,6 +230,7 @@ std::vector<SffMidiEvent> Sff1Reader::parseMidiEvents(const uint8_t* data,
     uint8_t  running_status = 0;
     uint32_t absolute_tick = 0;
     size_t   pos = 0;
+    bool     have_time_sig = false;
 
     // Standard MIDI File variable-length quantity (max 4 bytes).
     auto readVlq = [&](uint32_t& out) -> bool {
@@ -270,8 +271,22 @@ std::vector<SffMidiEvent> Sff1Reader::parseMidiEvents(const uint8_t* data,
             uint32_t len = 0;
             if (!readVlq(len)) break;
             running_status = 0;
-            if (metaType == 0x2F) break;               // End of Track
+            if (metaType == 0x2F) {                    // End of Track
+                result_.end_of_track_tick = absolute_tick;
+                break;
+            }
             if (len > remaining - pos) break;          // truncated meta
+            // Section markers + time signature feed the mapper's section split.
+            if (metaType == 0x06 && len > 0 && len <= 64 &&
+                result_.markers.size() < kMaxTopLevelChunks) {
+                std::string name(reinterpret_cast<const char*>(d + pos), len);
+                while (!name.empty() && static_cast<uint8_t>(name.back()) <= 32) name.pop_back();
+                result_.markers.push_back({absolute_tick, std::move(name)});
+            } else if (metaType == 0x58 && len >= 2 && !have_time_sig) {
+                result_.time_sig_num = d[pos];
+                result_.time_sig_den = (d[pos + 1] < 8) ? static_cast<uint8_t>(1u << d[pos + 1]) : 4;
+                have_time_sig = true;
+            }
             pos += len;
             continue;
         }

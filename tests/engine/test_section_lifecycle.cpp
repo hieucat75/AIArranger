@@ -164,26 +164,79 @@ int main() {
              r.sectionAtBar[4] == 1 && r.notesInBar(4) > 0 && r.notesInBar(7) > 0);
     }
 
-    // ── 6. Imported Genos style: full length plays, then loops ─────────
+    // ── 6. Imported Genos style through the facade: marker sections ────
+    // POP_ACOUSTIC_2's MTrk is split at its SMF markers into Intro A, Main A-D,
+    // Fill In AA-DD, Fill In BA (= Break) and Ending A. Variation A-D address
+    // Main A-D by type; Fill picks the fill of the playing Main.
     {
         importers::sff1::Sff1Reader reader;
         const auto pr = reader.parseFile(std::string(CORPUS_DIR) +
             "/POP_ACOUSTIC_2_SC_GENOS.S718---7ba40ed3-527f-49ce-a22c-2414d5de2ec5.sty");
         importers::sff1::Sff1ToUasfMapper mapper;
         const auto mr = mapper.map(pr);
-        const bool ok = mr.success && !mr.style.sections.empty();
-        TEST("import: POP_ACOUSTIC_2 mapped", ok);
-        if (ok) {
-            const uint32_t bars = mr.style.sections[0].bars;
-            TEST("import: section length from content (24 bars, not the 4-bar placeholder)", bars == 24);
-            Rig r(mr.style);
-            r.player.start(0);
-            r.run(static_cast<int>(bars) + 4);
-            TEST("import: bar 23 (last) sounds", r.notesInBar(23) > 0);
-            TEST("import: loops — bar 24+k repeats bar k", r.notesInBar(bars + 1) == r.notesInBar(1) &&
-                                                        r.notesInBar(bars + 2) == r.notesInBar(2) &&
-                                                        r.notesInBar(1) > 0);
-        }
+        const auto& secs = mr.style.sections;
+        auto indexOf = [&](uasf::SectionType t) {
+            for (size_t i = 0; i < secs.size(); ++i) if (secs[i].type == t) return static_cast<int>(i);
+            return -1;
+        };
+        const int introA = indexOf(uasf::SectionType::Intro1);
+        const int mainA  = indexOf(uasf::SectionType::Main1);
+        const int mainC  = indexOf(uasf::SectionType::Main3);
+        const int fillCC = indexOf(uasf::SectionType::Fill3);
+        TEST("import: split into 11 marker sections", mr.success && secs.size() == 11);
+        TEST("import: Intro A first, Main A-D / Fill AA-DD / Break / Ending A present",
+             introA == 0 && mainA >= 0 && mainC >= 0 && fillCC >= 0 &&
+             indexOf(uasf::SectionType::Main4) >= 0 && indexOf(uasf::SectionType::Break) >= 0 &&
+             indexOf(uasf::SectionType::Ending1) >= 0);
+        TEST("import: Main A is 4 bars, Intro A 1 bar",
+             mainA >= 0 && secs[mainA].bars == 4 && secs[0].bars == 1);
+
+        midi::FakeMidiOutputProvider out; out.setDevices({{0, "synth"}});
+        session::LiveEngineFacade f(nullptr, &out);
+        f.selectMidiOutput(0);
+        f.loadStyle(mr.style);
+        f.start();
+        f.transportStart();
+        // 120 BPM, 48 kHz: one 4/4 bar = 96000 samples = 2000 ticks of 48.
+        auto bars = [&](int n) { for (int i = 0; i < n * 2000; ++i) f.tick(48); };
+        auto notes = [&] {
+            int n = 0;
+            for (const auto& e : out.sent) if (e.type == uasf::MidiEventType::NoteOn && e.data2 > 0) ++n;
+            return n;
+        };
+        bars(1);
+        f.tick(48);
+        TEST("import: Intro A (1 bar) hands over to Main A", f.snapshot().section == mainA);
+        bars(5);
+        TEST("import: Main A still playing after 5 more bars (looped)", f.snapshot().section == mainA);
+        const int before = notes();
+        f.setVariation(2);                       // Variation C
+        bars(2);
+        TEST("import: Variation C -> Main C", f.snapshot().section == mainC);
+        f.fill();
+        bars(1);
+        TEST("import: Fill during Main C plays Fill In CC", f.snapshot().section == fillCC);
+        bars(1);
+        TEST("import: Fill In CC returns to Main C", f.snapshot().section == mainC);
+        TEST("import: accompaniment kept sounding throughout", notes() > before);
+        f.stop();
+    }
+
+    // ── Demo style: Variation A-D address Mains, not raw indexes 0-3 ────
+    {
+        session::LiveEngineFacade f(nullptr, nullptr);
+        f.start();
+        f.transportStart();
+        for (int i = 0; i < 2000; ++i) f.tick(48);    // bar 0 (Intro)
+        f.setVariation(0);                            // Variation A
+        for (int i = 0; i < 2000; ++i) f.tick(48);
+        TEST("demo: Variation A selects the Main (index 1), not the Intro (index 0)",
+             f.snapshot().section == 1);
+        f.setVariation(3);                            // Variation D (no Main D) -> first Main
+        for (int i = 0; i < 2000; ++i) f.tick(48);
+        TEST("demo: Variation D without a Main D stays on the Main (not the Ending)",
+             f.snapshot().section == 1 && f.snapshot().playing);
+        f.stop();
     }
 
     // ── 7. Product path: the facade keeps playing past the intro ───────
