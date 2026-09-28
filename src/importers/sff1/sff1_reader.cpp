@@ -2,12 +2,13 @@
 #include <fstream>
 #include <cstring>
 #include <algorithm>
+#include <new>
 
 namespace ai_arranger::importers::sff1 {
 
 Sff1Reader::Sff1Reader() = default;
 
-ParseResult Sff1Reader::parseFile(const std::string& path) noexcept {
+ParseResult Sff1Reader::parseFile(const std::string& path) noexcept try {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file) {
         return {false, "Cannot open file: " + path, path};
@@ -24,10 +25,30 @@ ParseResult Sff1Reader::parseFile(const std::string& path) noexcept {
     file.close();
 
     return parseBuffer(buffer, path);
+} catch (const std::bad_alloc&) {
+    // noexcept entry point: an allocation failure is an import error, never
+    // std::terminate (a crafted file must not be able to kill the host).
+    ParseResult r{};
+    r.success = false;
+    r.error = "Out of memory while reading file";
+    return r;
 }
 
 ParseResult Sff1Reader::parseBuffer(const std::vector<uint8_t>& buffer,
                                      const std::string& filename) noexcept {
+    try {
+        return parseBufferImpl(buffer, filename);
+    } catch (const std::bad_alloc&) {
+        result_ = ParseResult{};
+        result_.success = false;
+        result_.error = "Out of memory while parsing SFF1 data";
+        data_ = nullptr; size_ = 0; pos_ = 0;
+        return result_;
+    }
+}
+
+ParseResult Sff1Reader::parseBufferImpl(const std::vector<uint8_t>& buffer,
+                                        const std::string& filename) {
     data_ = buffer.data();
     size_ = buffer.size();
     pos_ = 0;
@@ -43,6 +64,12 @@ ParseResult Sff1Reader::parseBuffer(const std::vector<uint8_t>& buffer,
 
     // ── Read all top-level chunks ──────────────────────────────────
     while (pos_ < size_) {
+        if (result_.chunks.size() >= kMaxTopLevelChunks) {
+            result_.warnings.push_back("Top-level chunk limit (" +
+                                       std::to_string(kMaxTopLevelChunks) +
+                                       ") reached; remaining data ignored");
+            break;
+        }
         if (size_ - pos_ < 8) {
             result_.warnings.push_back("Trailing bytes at end of file (" +
                                        std::to_string(size_ - pos_) + " bytes)");
@@ -103,7 +130,7 @@ ParseResult Sff1Reader::parseBuffer(const std::vector<uint8_t>& buffer,
 
 // ── Chunk Reading ─────────────────────────────────────────────────
 
-SffChunk Sff1Reader::readChunk() noexcept {
+SffChunk Sff1Reader::readChunk() {
     SffChunk chunk;
 
     // Try to read a 4-byte chunk ID
@@ -113,7 +140,7 @@ SffChunk Sff1Reader::readChunk() noexcept {
     // If the ID is not ASCII-printable, we've likely hit non-chunk data
     for (char c : chunk.chunk_id) {
         if (c < 32 || c > 126) {
-            skip(-4); // Go back
+            pos_ -= 4; // Go back (readString consumed exactly 4 bytes)
             return {};
         }
     }
@@ -131,8 +158,9 @@ SffChunk Sff1Reader::readChunk() noexcept {
     if (!ensure(chunk.size)) {
         chunk.size = static_cast<uint32_t>(size_ - pos_);
     }
-    chunk.data.resize(chunk.size);
-    std::memcpy(chunk.data.data(), data_ + pos_, chunk.size);
+    // assign() rather than resize()+memcpy: a zero-size chunk has data()==nullptr,
+    // and memcpy with a null pointer is UB even for 0 bytes.
+    chunk.data.assign(data_ + pos_, data_ + pos_ + chunk.size);
     skip(chunk.size);
 
     return chunk;
@@ -147,7 +175,7 @@ bool Sff1Reader::isKnownChunk(const std::string& id) const noexcept {
 
 // ── Section Parsing ───────────────────────────────────────────────
 
-SffSection Sff1Reader::parseSection(const SffChunk& chunk) noexcept {
+SffSection Sff1Reader::parseSection(const SffChunk& chunk) {
     SffSection section{};
     section.resolution = 480;
     section.bars = 4;
@@ -182,7 +210,7 @@ SffSection Sff1Reader::parseSection(const SffChunk& chunk) noexcept {
     return section;
 }
 
-SffTrack Sff1Reader::parseTrack(const uint8_t* data, size_t size) noexcept {
+SffTrack Sff1Reader::parseTrack(const uint8_t* data, size_t size) {
     SffTrack track{};
     track.midi_channel = 0;
     track.role = SffTrackRole::Phrase1;
@@ -193,7 +221,7 @@ SffTrack Sff1Reader::parseTrack(const uint8_t* data, size_t size) noexcept {
 
 std::vector<SffMidiEvent> Sff1Reader::parseMidiEvents(const uint8_t* data,
                                                         size_t size,
-                                                        uint32_t& offset) noexcept {
+                                                        uint32_t& offset) {
     std::vector<SffMidiEvent> events;
     if (offset >= size) return events;
 
@@ -319,7 +347,7 @@ uint32_t Sff1Reader::readU32BE() noexcept {
     return v;
 }
 
-std::string Sff1Reader::readString(size_t len) noexcept {
+std::string Sff1Reader::readString(size_t len) {
     if (!ensure(len)) return {};
     std::string s(reinterpret_cast<const char*>(data_ + pos_), len);
     pos_ += len;
@@ -340,7 +368,7 @@ bool Sff1Reader::ensure(size_t bytes) noexcept {
 
 // ── SMF/SFF2 Parsing ─────────────────────────────────────────────
 
-bool Sff1Reader::parseMThd(const SffChunk& chunk) noexcept {
+bool Sff1Reader::parseMThd(const SffChunk& chunk) {
     if (chunk.data.size() < 6) return false;
 
     // MThd division is big-endian per the Standard MIDI File spec
@@ -362,7 +390,7 @@ bool Sff1Reader::parseMThd(const SffChunk& chunk) noexcept {
     return true;
 }
 
-bool Sff1Reader::parseMTrk(const SffChunk& chunk) noexcept {
+bool Sff1Reader::parseMTrk(const SffChunk& chunk) {
     if (chunk.data.empty()) return false;
 
     uint32_t offset = 0;
@@ -384,8 +412,17 @@ bool Sff1Reader::parseMTrk(const SffChunk& chunk) noexcept {
 
 // ── CASM Parsing ───────────────────────────────────────────────────
 
-bool Sff1Reader::parseCasm(const uint8_t* data, size_t size) noexcept {
+bool Sff1Reader::parseCasm(const uint8_t* data, size_t size, int depth) {
     if (size < 8) return false;
+    if (depth > kMaxCasmDepth) {
+        // Real files nest CSEG once; a deeper chain is corrupt or crafted and
+        // would otherwise recurse until the stack overflows.
+        if (depth == kMaxCasmDepth + 1)
+            result_.warnings.push_back("CASM nesting deeper than " +
+                                       std::to_string(kMaxCasmDepth) +
+                                       " levels ignored");
+        return false;
+    }
 
     size_t pos = 0;
 
@@ -410,7 +447,7 @@ bool Sff1Reader::parseCasm(const uint8_t* data, size_t size) noexcept {
             parseCtb2Block(data + pos, sub_size);
         } else if (sub_id == "CSEG") {
             // Inner CSEG — another section
-            parseCasm(data + pos, sub_size);
+            parseCasm(data + pos, sub_size, depth + 1);
         } else if (sub_id == "Sdec") {
             // Section definition — extract section name and open a new
             // CASM section. Subsequent Ctb2 blocks attach to it.
@@ -437,7 +474,7 @@ bool Sff1Reader::parseCasm(const uint8_t* data, size_t size) noexcept {
     return true;
 }
 
-void Sff1Reader::parseCtb2Block(const uint8_t* data, size_t size) noexcept {
+void Sff1Reader::parseCtb2Block(const uint8_t* data, size_t size) {
     // A Ctb2 sub-chunk holds one source-channel configuration. Layout
     // (offsets within the entry), validated against 4 real Genos files:
     //   [0]      Source Channel
