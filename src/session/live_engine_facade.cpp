@@ -78,7 +78,7 @@ void LiveEngineFacade::tick(uint32_t numSamples) noexcept {
     session_.scheduler().advanceTo(session_.clock().getPosition());
     if (output_) control::pumpEngineOutput(out_bridge_, *output_);
 
-    publishSnapshot();
+    publishSnapshot(/*fromTick=*/true);
 }
 
 template <class PopFn>
@@ -99,7 +99,7 @@ void LiveEngineFacade::drainToAdapter(PopFn&& pop, control::ControlEvent& carry,
     }
 }
 
-void LiveEngineFacade::publishSnapshot() noexcept {
+void LiveEngineFacade::publishSnapshot(bool fromTick) noexcept {
     EngineSnapshot s;
     const auto chord = session_.player().getCurrentChord();
     s.playing        = session_.player().isPlaying();
@@ -115,7 +115,10 @@ void LiveEngineFacade::publishSnapshot() noexcept {
     s.midiOutLive    = output_ ? output_->hasLiveDestination() : false;
     s.receivedMessages = input_  ? input_->receivedCount() : 0;
     s.dispatchedNotes  = output_ ? output_->dispatchedCount() : 0;
-    snapshot_.store(s, std::memory_order_release);
+    // A skipped tick publish (lifecycle publish in flight) is republished on
+    // the next tick; the lifecycle path waits so its state change is visible.
+    if (fromTick) snapshot_.tryStore(s);
+    else          snapshot_.store(s);
 }
 
 } // namespace ai_arranger::session

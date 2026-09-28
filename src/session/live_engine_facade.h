@@ -3,6 +3,7 @@
 
 #include "session/engine_session.h"
 #include "session/engine_snapshot.h"
+#include "session/seqlock_snapshot.h"
 #include "session/engine_contract.h"
 #include "session/engine_lifecycle.h"
 #include "control/ui_event_queue.h"
@@ -32,7 +33,8 @@
 //     The drain is lossless: an event the engine queue cannot take this tick is
 //     held back and delivered first on the next tick (never silently dropped).
 //   - tick() runs on the engine thread; it advances the clock/sequencer, pumps
-//     output, and republishes the atomic snapshot the UI polls.
+//     output, and republishes the snapshot the UI polls. Publication is a
+//     lock-free seqlock (never a mutex), so tick() may run on an audio thread.
 
 namespace ai_arranger::session {
 
@@ -100,7 +102,7 @@ public:
     void tick(uint32_t numSamples) noexcept;
 
     // ── UI read ───────────────────────────────────────────────────────
-    EngineSnapshot snapshot() const noexcept { return snapshot_.load(std::memory_order_acquire); }
+    EngineSnapshot snapshot() const noexcept { return snapshot_.load(); }
 
     EngineSession& session() noexcept { return session_; }
 
@@ -130,7 +132,8 @@ public:
     static constexpr uint32_t contractVersion() noexcept { return kEngineContractVersion; }
 
 private:
-    void publishSnapshot() noexcept;
+    // fromTick: the realtime path never waits for a concurrent lifecycle publish.
+    void publishSnapshot(bool fromTick = false) noexcept;
     void push(control::ControlAction a, int32_t param = 0) noexcept {
         if (!cmd_q_.try_push({a, param, 0})) recordError(EngineError::QueueFull);
     }
@@ -158,7 +161,7 @@ private:
     bool has_input_carry_{false};
 
     std::atomic<uint32_t>       pending_tempo_{0};
-    std::atomic<EngineSnapshot> snapshot_{};
+    SeqlockSnapshot<EngineSnapshot> snapshot_;
     EngineLifecycle             lifecycle_{};                 // Gate 4 lifecycle tracker
     std::atomic<EngineError>    last_error_{EngineError::Ok}; // most recent deterministic error
     bool started_{false};

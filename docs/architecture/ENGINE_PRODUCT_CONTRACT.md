@@ -63,7 +63,7 @@ MIDI input: single read thread; engine control queue: the tick thread only).
 | Transport / section / tempo / variation / panic commands | **any thread, concurrently** | enqueued on a bounded lock-free **MPSC** ring (exactly `maxCommandQueue` = 256 slots), applied in `tick()` |
 | MIDI input events | the input source's **read thread** | routed lock-free onto a 2nd SPSC queue, drained in `tick()` |
 | `tick(numSamples)` | the **engine thread** (one, consistent) | advances clock/sequencer, pumps output, publishes snapshot |
-| `snapshot()` / `capabilities()` / `lastError()` | **any thread** | atomic read (snapshot is published each tick) |
+| `snapshot()` / `capabilities()` / `lastError()` | **any thread** | snapshot: lock-free seqlock read, never torn (published each tick; the tick side never takes a lock, so `tick()` may run on an audio thread) |
 
 `lifecycleState()` reads the owner-thread tracker; for cross-thread polling read
 `snapshot().lifecycleState`, which is published atomically inside `tick()`,
