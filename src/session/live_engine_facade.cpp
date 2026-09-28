@@ -6,10 +6,17 @@
 namespace ai_arranger::session {
 
 namespace {
-// Adapts a lock-free SPSC queue to the router's `postEvent` sink contract.
+// Adapts the lock-free SPSC input queue to the router's `postEvent` sink
+// contract. A full queue (the tick thread stalled for >255 input events) drops
+// the event on the read thread, so it is surfaced as QueueFull, not lost silently.
 struct QueueSink {
     control::UiEventQueue<control::ControlEvent, 256>& q;
-    bool postEvent(const control::ControlEvent& e) noexcept { return q.push(e); }
+    std::atomic<EngineError>& lastError;
+    bool postEvent(const control::ControlEvent& e) noexcept {
+        if (q.push(e)) return true;
+        lastError.store(EngineError::QueueFull, std::memory_order_relaxed);
+        return false;
+    }
 };
 } // namespace
 
@@ -25,7 +32,7 @@ void LiveEngineFacade::start() noexcept {
     // MIDI input read thread -> route -> input_q_ (drained in tick()).
     if (input_) {
         input_->setSink([this](const midi::MidiInputMessage& m) {
-            QueueSink sink{input_q_};
+            QueueSink sink{input_q_, last_error_};
             midi::routeMidiInput(m, sink);
         });
     }
@@ -57,10 +64,13 @@ void LiveEngineFacade::tick(uint32_t numSamples) noexcept {
         session_.clock().setTempo(bpm);
 
     // Drain UI commands then MIDI input into the engine. This thread is the SOLE
-    // producer of the adapter's SPSC control queue.
-    control::ControlEvent ev;
-    while (cmd_q_.pop(ev))   session_.adapter().postEvent(ev);
-    while (input_q_.pop(ev)) session_.adapter().postEvent(ev);
+    // producer of the adapter's SPSC control queue, which is the same depth as
+    // each facade queue: a burst on both in one tick cannot all fit, so the drain
+    // applies back-pressure instead of discarding (a lost NoteOff = stuck note).
+    drainToAdapter([this](control::ControlEvent& e) noexcept { return cmd_q_.try_pop(e); },
+                   cmd_carry_, has_cmd_carry_);
+    drainToAdapter([this](control::ControlEvent& e) noexcept { return input_q_.pop(e); },
+                   input_carry_, has_input_carry_);
 
     // Advance the engine and schedule output (mirrors the macOS EngineDriver).
     session_.clock().advance(numSamples);
@@ -69,6 +79,24 @@ void LiveEngineFacade::tick(uint32_t numSamples) noexcept {
     if (output_) control::pumpEngineOutput(out_bridge_, *output_);
 
     publishSnapshot();
+}
+
+template <class PopFn>
+void LiveEngineFacade::drainToAdapter(PopFn&& pop, control::ControlEvent& carry,
+                                      bool& hasCarry) noexcept {
+    auto& adapter = session_.adapter();
+    if (hasCarry) {
+        if (!adapter.postEvent(carry)) return;   // engine queue still full
+        hasCarry = false;
+    }
+    control::ControlEvent e;
+    while (pop(e)) {
+        if (!adapter.postEvent(e)) {             // full: keep it for next tick
+            carry = e;
+            hasCarry = true;
+            return;
+        }
+    }
 }
 
 void LiveEngineFacade::publishSnapshot() noexcept {
