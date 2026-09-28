@@ -226,86 +226,76 @@ std::vector<SffMidiEvent> Sff1Reader::parseMidiEvents(const uint8_t* data,
     if (offset >= size) return events;
 
     const uint8_t* d = data + offset;
-    size_t remaining = size - offset;
-    uint32_t running_status = 0;
+    const size_t remaining = size - offset;
+    uint8_t  running_status = 0;
     uint32_t absolute_tick = 0;
+    size_t   pos = 0;
 
-    // Try to parse MIDI-like events (variable-length delta + status + data)
-    size_t pos = 0;
-    while (pos < remaining) {
-        // Try variable-length delta
-        uint32_t delta = 0;
-        uint32_t shift = 0;
-        bool hasDelta = false;
-
-        while (pos < remaining && shift < 28) {
-            uint8_t byte = d[pos++];
-            delta |= (byte & 0x7F) << shift;
-            shift += 7;
-            if ((byte & 0x80) == 0) {
-                hasDelta = true;
-                break;
-            }
+    // Standard MIDI File variable-length quantity (max 4 bytes).
+    auto readVlq = [&](uint32_t& out) -> bool {
+        out = 0;
+        for (int i = 0; i < 4; ++i) {
+            if (pos >= remaining) return false;
+            const uint8_t b = d[pos++];
+            out = (out << 7) | (b & 0x7F);
+            if ((b & 0x80) == 0) return true;
         }
+        return false;   // > 4 bytes: malformed
+    };
 
-        if (!hasDelta) break;
-
+    // SMF 1.0 track decoding. Only channel messages become events. SysEx
+    // (F0/F7 <len> <payload>) and meta (FF <type> <len> <payload>) events are
+    // skipped by their declared length — real Genos styles carry dozens of
+    // SysEx messages, whose payload must never be read as delta-times — and
+    // both cancel running status. End of Track (FF 2F) stops decoding; a
+    // truncated or unparseable message stops decoding without emitting it.
+    for (;;) {
+        uint32_t delta = 0;
+        if (!readVlq(delta)) break;
         absolute_tick += delta;
-
-        // Read status byte
         if (pos >= remaining) break;
+
         uint8_t status = d[pos];
         if (status & 0x80) {
-            running_status = status;
-            pos++;
+            ++pos;
+        } else if (running_status != 0) {
+            status = running_status;   // data byte: reuse the running status
+        } else {
+            break;                     // data byte with no status: malformed
         }
-        status = running_status;
 
-        if (status == 0) break; // End of track
-
-        uint8_t data1 = 0, data2 = 0;
-        uint8_t eventType = status & 0xF0;
-
-        switch (eventType) {
-            case 0x80: // Note Off
-            case 0x90: // Note On
-            case 0xA0: // Poly Pressure
-            case 0xB0: // Control Change
-            case 0xE0: // Pitch Bend
-                if (pos + 2 > remaining) break;
-                data1 = d[pos++];
-                data2 = d[pos++];
-                break;
-            case 0xC0: // Program Change
-            case 0xD0: // Channel Pressure
-                if (pos + 1 > remaining) break;
-                data1 = d[pos++];
-                data2 = 0;
-                break;
-            case 0xF0: // System
-                if (status == 0xFF) { // Meta event
-                    if (pos + 1 > remaining) break;
-                    uint8_t metaType = d[pos++];
-                    if (pos >= remaining) break;
-                    uint32_t metaLen = 0;
-                    shift = 0;
-                    while (pos < remaining && shift < 28) {
-                        uint8_t mb = d[pos++];
-                        metaLen |= (mb & 0x7F) << shift;
-                        shift += 7;
-                        if ((mb & 0x80) == 0) break;
-                    }
-                    if (metaType == 0x2F) break; // End of Track
-                    pos += metaLen;
-                }
-                continue; // Don't create an event for system
+        if (status == 0xFF) {
+            if (pos >= remaining) break;
+            const uint8_t metaType = d[pos++];
+            uint32_t len = 0;
+            if (!readVlq(len)) break;
+            running_status = 0;
+            if (metaType == 0x2F) break;               // End of Track
+            if (len > remaining - pos) break;          // truncated meta
+            pos += len;
+            continue;
         }
+        if (status == 0xF0 || status == 0xF7) {
+            uint32_t len = 0;
+            if (!readVlq(len)) break;
+            running_status = 0;
+            if (len > remaining - pos) break;          // truncated SysEx
+            pos += len;
+            continue;
+        }
+        if (status >= 0xF0) break;                     // not valid inside an SMF track
+
+        running_status = status;
+        const uint8_t type = status & 0xF0;
+        const size_t  need = (type == 0xC0 || type == 0xD0) ? 1 : 2;
+        if (need > remaining - pos) break;             // truncated channel message
 
         SffMidiEvent ev;
-        ev.tick = absolute_tick;
+        ev.tick   = absolute_tick;
         ev.status = status;
-        ev.data1 = data1;
-        ev.data2 = data2;
+        ev.data1  = d[pos];
+        ev.data2  = (need == 2) ? d[pos + 1] : 0;
+        pos += need;
         events.push_back(ev);
     }
 
