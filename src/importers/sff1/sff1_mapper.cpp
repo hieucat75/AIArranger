@@ -144,6 +144,12 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
     // SInt block's setup messages (program/bank/CC, not notes) are placed at
     // tick 0 of every Intro, so a Start re-initialises the parts. Styles with
     // no recognised markers keep the single-section import below.
+    // Meter from the SMF time signature (FF 58); 4/4 if absent or unusable.
+    const uint8_t tsNum = parseResult.time_sig_num ? parseResult.time_sig_num : 4;
+    const uint8_t tsDen = (parseResult.time_sig_den == 2 || parseResult.time_sig_den == 4 ||
+                           parseResult.time_sig_den == 8 || parseResult.time_sig_den == 16)
+                              ? parseResult.time_sig_den : 4;
+
     std::vector<const SffMidiEvent*> allEvents;
     for (const auto& sffSection : parseResult.sections)
         for (const auto& t : sffSection.tracks)
@@ -184,7 +190,7 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
         const bool anyIntro = std::any_of(ranges.begin(), ranges.end(), [](const Range& r) {
             return r.type >= uasf::SectionType::Intro1 && r.type <= uasf::SectionType::Intro3;
         });
-        const uint64_t barTicks = static_cast<uint64_t>(style.resolution) * 4;
+        const uint64_t barTicks = static_cast<uint64_t>(style.resolution) * 4 * tsNum / tsDen;
 
         for (size_t ri = 0; ri < ranges.size(); ++ri) {
             const Range& r = ranges[ri];
@@ -221,8 +227,8 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
             section.type = r.type;
             section.name = r.name;
             section.resolution = style.resolution;
-            section.beats_per_bar = 4;
-            section.beat_note = 4;
+            section.beats_per_bar = tsNum;
+            section.beat_note = tsDen;
             section.bars = barTicks ? static_cast<uint32_t>(std::max<uint64_t>(
                                1, (len + barTicks - 1) / barTicks)) : 1;
             fillTracks(section, evs, secCfg.empty() ? nullptr : &secCfg);
@@ -235,8 +241,8 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
             section.name = sffSection.name;
             section.bars = sffSection.bars;
             section.resolution = sffSection.resolution;
-            section.beats_per_bar = 4;
-            section.beat_note = 4;
+            section.beats_per_bar = tsNum;
+            section.beat_note = tsDen;
 
             std::vector<std::pair<const SffMidiEvent*, uint64_t>> evs;
             for (const auto& sffTrack : sffSection.tracks)
@@ -246,7 +252,7 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
             // Section length from its content. The reader only knows a placeholder
             // (4 bars); the engine loops / hands over at bars x bar length, so
             // a placeholder would loop just the first 4 bars of a 24+ bar SMF.
-            // Round up to whole 4/4 bars (the sequencer's bar grid); a final
+            // Round up to whole bars of the style meter (the sequencer grid); a final
             // NoteOff exactly on a bar line ends that bar (it is dispatched at the
             // section end), so it does not add an extra bar.
             uint64_t maxTick = 0;
@@ -254,7 +260,8 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
             for (const auto& t : section.tracks)
                 for (const auto& e : t.events) { anyEvent = true; if (e.tick > maxTick) maxTick = e.tick; }
             if (anyEvent && section.resolution > 0) {
-                const uint64_t barTicks = static_cast<uint64_t>(section.resolution) * 4;
+                const uint64_t barTicks =
+                    static_cast<uint64_t>(section.resolution) * 4 * tsNum / tsDen;
                 const uint64_t bars = std::max<uint64_t>(1, (maxTick + barTicks - 1) / barTicks);
                 section.bars = static_cast<uint32_t>(std::min<uint64_t>(bars, 0xFFFF));
             }

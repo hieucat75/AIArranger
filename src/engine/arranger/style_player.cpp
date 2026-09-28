@@ -26,6 +26,11 @@ void StylePlayer::loadStyle(const uasf::StyleDefinition& style) noexcept {
     if (!clock_.isRunning()) {
         if (style_.tempo_bpm > 0)  clock_.setTempo(style_.tempo_bpm);
         if (style_.resolution > 0) clock_.setResolution(style_.resolution);
+        // Bar grid from the style's meter (first section; styles are one meter).
+        if (!style_.sections.empty() && style_.sections[0].beats_per_bar > 0 &&
+            style_.sections[0].beat_note > 0)
+            clock_.setTimeSignature(style_.sections[0].beats_per_bar,
+                                    style_.sections[0].beat_note);
     }
     return_main_ = -1;
 }

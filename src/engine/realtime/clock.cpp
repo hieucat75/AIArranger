@@ -181,8 +181,10 @@ void RealtimeClock::recalcDerived() noexcept {
     double tps = static_cast<double>(res) / (static_cast<double>(sr) * 60.0 / static_cast<double>(bpm));
     ticks_per_sample_.store(tps, std::memory_order_release);
 
-    int64_t ticksPerBeatVal = res;
-    int64_t ticksPerBarVal = res * bpb;
+    // Beat = the time-signature denominator note (quarter = res ticks): 6/8
+    // bars are 6 eighths = 3 quarters. 4/4 is unchanged (res, 4 x res).
+    int64_t ticksPerBeatVal = (bpn > 0) ? static_cast<int64_t>(res) * 4 / bpn : res;
+    int64_t ticksPerBarVal = ticksPerBeatVal * bpb;
 
     ticks_per_bar_cache_.store(ticksPerBarVal, std::memory_order_release);
     ticks_per_beat_cache_.store(ticksPerBeatVal, std::memory_order_release);
