@@ -119,7 +119,8 @@ foreach(test_file ${TEST_SRC})
     add_executable(${test_name} ${test_file})
     target_link_libraries(${test_name} importer-sff1 ${PLATFORM_LIBS} arranger-engine Threads::Threads)
     target_compile_definitions(${test_name} PRIVATE
-        CORPUS_DIR="${CMAKE_SOURCE_DIR}/corpus/yamaha/sff1")
+        CORPUS_DIR="${CMAKE_SOURCE_DIR}/corpus/yamaha/sff1"
+        REPO_DIR="${CMAKE_SOURCE_DIR}")
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
 
