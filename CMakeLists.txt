@@ -192,6 +192,17 @@ foreach(test_file ${BRIDGE_TEST_SRC})
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
 
+# Pure-C consumer: compiles the public header as strict C11 and links through the
+# C ABI only — machine-checks that nothing C++ leaks across the bridge. The C++
+# runtime comes from the static bridge, so the final link uses the C++ driver.
+add_executable(test_bridge_c_consumer tests/bridge/test_bridge_c_consumer.c)
+set_target_properties(test_bridge_c_consumer PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF LINKER_LANGUAGE CXX)
+target_compile_options(test_bridge_c_consumer PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -pedantic -Werror>)
+target_link_libraries(test_bridge_c_consumer arranger-bridge arranger-engine Threads::Threads)
+add_test(NAME test_bridge_c_consumer COMMAND test_bridge_c_consumer)
+
 # ── Gate 3 latency report tool (Python, stdlib only) ──────────────────
 # Synthetic-data unit test for tools/latency_report; registered so CTest/CI run
 # it alongside the C++ suites instead of it being a manual-only check.
