@@ -18,6 +18,10 @@ void StylePlayer::loadStyle(const uasf::StyleDefinition& style) noexcept {
     style_ = style;
     style_loaded_ = true;
     sequencer_.setSections(style_.sections.data(), style_.sections.size());
+    // Selecting a style (while stopped) adopts its tempo; start() then keeps
+    // whatever the performer has set since. A style swap while playing keeps
+    // the running tempo (no audible tempo jump mid-song).
+    if (!clock_.isRunning() && style_.tempo_bpm > 0) clock_.setTempo(style_.tempo_bpm);
 }
 
 void StylePlayer::clearStyle() noexcept {
@@ -33,11 +37,10 @@ bool StylePlayer::start(int introSectionIndex) noexcept {
         introSectionIndex = 0;
     }
 
-    clock_.setTempo(style_.tempo_bpm);
     clock_.reset();
     clock_.start();
 
-    AIARR_TRACE_SET_TEMPO(style_.tempo_bpm);
+    AIARR_TRACE_SET_TEMPO(clock_.getTempo());
     AIARR_TRACE_SET_SECTION(introSectionIndex);
     AIARR_TRACE_LIFECYCLE(::ai_arranger::trace::LifecycleTag::kStart);
 
