@@ -18,10 +18,16 @@ void StylePlayer::loadStyle(const uasf::StyleDefinition& style) noexcept {
     style_ = style;
     style_loaded_ = true;
     sequencer_.setSections(style_.sections.data(), style_.sections.size());
-    // Selecting a style (while stopped) adopts its tempo; start() then keeps
-    // whatever the performer has set since. A style swap while playing keeps
-    // the running tempo (no audible tempo jump mid-song).
-    if (!clock_.isRunning() && style_.tempo_bpm > 0) clock_.setTempo(style_.tempo_bpm);
+    // Selecting a style (while stopped) adopts its tempo and resolution;
+    // start() then keeps whatever tempo the performer has set since. A style
+    // swap while playing keeps the running tempo/resolution (no audible jump,
+    // no position discontinuity mid-song). Without the resolution, a 1920-PPQN
+    // Genos import ran on the engine's default 480-PPQN clock (4x too slow).
+    if (!clock_.isRunning()) {
+        if (style_.tempo_bpm > 0)  clock_.setTempo(style_.tempo_bpm);
+        if (style_.resolution > 0) clock_.setResolution(style_.resolution);
+    }
+    return_main_ = -1;
 }
 
 void StylePlayer::clearStyle() noexcept {
@@ -47,6 +53,7 @@ bool StylePlayer::start(int introSectionIndex) noexcept {
     sequencer_.setCurrentChord(chords::CMaj);
     section_origin_tick_ = 0;
     section_rel_cursor_ = -1;
+    return_main_ = -1;
 
     // Queue intro section
     sequencer_.queueSection(introSectionIndex);
@@ -147,21 +154,89 @@ void StylePlayer::tick() noexcept {
         panic_handler_.flushActiveNotes([this](const uasf::MidiEvent& ev) {
             scheduler_.scheduleEvent(ev);
         });
-        section_origin_tick_ = currentTick;
+        // Anchor the section on the bar line it was committed at, not on this
+        // engine tick (which lands up to one tick period later): keeps every
+        // section — and its end / loop boundary — on the bar grid. Events
+        // between the bar line and now fire in this same tick.
+        section_origin_tick_ = sequencer_.lastBarStart();
         section_rel_cursor_ = -1;
         AIARR_TRACE_SET_SECTION(sequencer_.getCurrentSectionIndex());
         AIARR_TRACE_LIFECYCLE(::ai_arranger::trace::LifecycleTag::kSectionSwitch);
     }
+
+    // End of the current section: loop Main, hand Intro/Fill/Break back to
+    // Main, stop after Ending (arranger-engine-spec §5).
+    if (!handleSectionEnd(currentTick)) return;
 
     // Get current section
     int sectionIdx = sequencer_.getCurrentSectionIndex();
     if (sectionIdx < 0 || sectionIdx >= static_cast<int>(style_.sections.size())) return;
 
     const auto& section = style_.sections[sectionIdx];
+    if (section.type >= uasf::SectionType::Main1 && section.type <= uasf::SectionType::Main4)
+        return_main_ = sectionIdx;
     Chord currentChord = sequencer_.getCurrentChord();
 
     // Dispatch events for this section
     dispatchSectionEvents(section, currentTick, currentChord);
+}
+
+int StylePlayer::defaultMainIndex() const noexcept {
+    if (return_main_ >= 0 && return_main_ < static_cast<int>(style_.sections.size()))
+        return return_main_;
+    for (size_t i = 0; i < style_.sections.size(); ++i) {
+        const auto t = style_.sections[i].type;
+        if (t >= uasf::SectionType::Main1 && t <= uasf::SectionType::Main4)
+            return static_cast<int>(i);
+    }
+    return -1;
+}
+
+bool StylePlayer::handleSectionEnd(int64_t currentTick) noexcept {
+    const int idx = sequencer_.getCurrentSectionIndex();
+    if (idx < 0 || idx >= static_cast<int>(style_.sections.size())) return true;
+    const auto& section = style_.sections[idx];
+
+    // Section length on the sequencer's bar grid. bars == 0 means "length
+    // unknown": keep the legacy behaviour (play once, switch on command only).
+    const int64_t len = static_cast<int64_t>(section.bars) * clock_.ticksPerBar();
+    if (len <= 0 || currentTick - section_origin_tick_ < len) return true;
+
+    // Fire what is left of this pass. A NoteOff exactly at the section end
+    // closes this pass; anything else at that tick is the next pass's tick 0.
+    dispatchSectionEvents(section, section_origin_tick_ + len, sequencer_.getCurrentChord(),
+                          /*noteOffOnlyFrom=*/len);
+    const int64_t boundary = section_origin_tick_ + len;
+    const auto type = section.type;
+
+    if (type >= uasf::SectionType::Ending1 && type <= uasf::SectionType::Ending3) {
+        stop();                          // Ending finished -> STOPPED (flushes notes)
+        return false;
+    }
+
+    int next = idx;                      // Main (and anything unclassified) loops
+    const bool handsBack =
+        (type >= uasf::SectionType::Intro1 && type <= uasf::SectionType::Intro3) ||
+        (type >= uasf::SectionType::Fill1  && type <= uasf::SectionType::Fill4)  ||
+        type == uasf::SectionType::Break;
+    if (handsBack) {
+        const int main = defaultMainIndex();
+        if (main >= 0) next = main;
+    }
+
+    if (next != idx) {
+        panic_handler_.flushActiveNotes([this](const uasf::MidiEvent& ev) {
+            scheduler_.scheduleEvent(ev);
+        });
+        sequencer_.commitSection(next);
+        AIARR_TRACE_SET_SECTION(next);
+        AIARR_TRACE_LIFECYCLE(::ai_arranger::trace::LifecycleTag::kSectionSwitch);
+    }
+    // Re-anchor exactly on the boundary (no drift across loops) and dispatch the
+    // new pass from its tick 0 in this same tick.
+    section_origin_tick_ = boundary;
+    section_rel_cursor_ = -1;
+    return true;
 }
 
 bool StylePlayer::isPlaying() const noexcept {
@@ -214,7 +289,8 @@ struct SchedulerSink final : articulation::EventSink {
 
 void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
                                           int64_t currentTick,
-                                          Chord chord) noexcept {
+                                          Chord chord,
+                                          int64_t noteOffOnlyFrom) noexcept {
     // Monotonic cursor: dispatch every event whose section-relative tick falls
     // in (section_rel_cursor_, rel]. Each event fires exactly once as playback
     // time advances, so NoteOn/NoteOff pairs stay balanced (no stuck notes).
@@ -228,6 +304,10 @@ void StylePlayer::dispatchSectionEvents(const uasf::SectionDefinition& section,
         for (const auto& event : track.events) {
             const int64_t et = static_cast<int64_t>(event.tick);
             if (et <= section_rel_cursor_ || et > rel) continue;
+            if (et >= noteOffOnlyFrom &&
+                !(event.type == uasf::MidiEventType::NoteOff ||
+                  (event.type == uasf::MidiEventType::NoteOn && event.data2 == 0)))
+                continue;   // a NoteOn at the very end starts the next pass
 
             uasf::MidiEvent dispatched = event;
             if (dispatched.type == uasf::MidiEventType::NoteOn ||

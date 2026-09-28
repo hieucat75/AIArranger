@@ -13,6 +13,14 @@ void SectionSequencer::queueSection(int index) noexcept {
     queued_section_.store(index, std::memory_order_release);
 }
 
+void SectionSequencer::commitSection(int index) noexcept {
+    if (!sections_ || index < 0 || index >= static_cast<int>(section_count_)) return;
+    const int pending = queued_section_.load(std::memory_order_acquire);
+    activateSection(index);
+    if (pending >= 0 && pending != index)
+        queued_section_.store(pending, std::memory_order_release);
+}
+
 void SectionSequencer::queueIntro() noexcept {
     // Find the first Intro section (symmetric with queueFill/queueEnding).
     for (size_t i = 0; i < section_count_; ++i) {
