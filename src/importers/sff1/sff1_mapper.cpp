@@ -121,6 +121,22 @@ SffToUasfResult Sff1ToUasfMapper::map(const ParseResult& parseResult) noexcept {
             section.tracks.push_back(std::move(track));
         }
 
+        // Section length from its content. The reader only knows a placeholder
+        // (4 bars); the engine now loops / hands over at bars x bar length, so
+        // a placeholder would loop just the first 4 bars of a 24+ bar SMF.
+        // Round up to whole 4/4 bars (the sequencer's bar grid); a final
+        // NoteOff exactly on a bar line ends that bar (it is dispatched at the
+        // section end), so it does not add an extra bar.
+        uint64_t maxTick = 0;
+        bool anyEvent = false;
+        for (const auto& t : section.tracks)
+            for (const auto& e : t.events) { anyEvent = true; if (e.tick > maxTick) maxTick = e.tick; }
+        if (anyEvent && section.resolution > 0) {
+            const uint64_t barTicks = static_cast<uint64_t>(section.resolution) * 4;
+            const uint64_t bars = std::max<uint64_t>(1, (maxTick + barTicks - 1) / barTicks);
+            section.bars = static_cast<uint32_t>(std::min<uint64_t>(bars, 0xFFFF));
+        }
+
         style.sections.push_back(std::move(section));
     }
 
